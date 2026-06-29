@@ -3897,9 +3897,30 @@ async function cfGmailBuscarGastos(token) {
 let cfGmailQueue = [];
 let cfGmailIdx   = 0;
 
+function cfBuscarServicioMatch(comercio) {
+    if (!comercio || !listaServicios.length) return null;
+    const needle = comercio.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Buscar servicio pendiente de pago con nombre similar
+    return listaServicios.find(s => {
+        if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false; // ya pagado
+        const hay = (s.nombre || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Match si uno contiene al otro con al menos 4 caracteres
+        if (needle.length >= 4 && hay.includes(needle.substring(0, Math.min(needle.length, 8)))) return true;
+        if (hay.length >= 4 && needle.includes(hay.substring(0, Math.min(hay.length, 8)))) return true;
+        return false;
+    }) || null;
+}
+
 function cfGmailMostrarSiguiente() {
     if (cfGmailIdx >= cfGmailQueue.length) return;
-    cfAbrirModalGasto(cfGmailQueue[cfGmailIdx]);
+    const datos = cfGmailQueue[cfGmailIdx];
+    // Detectar si corresponde a un servicio fijo existente
+    const servicioMatch = cfBuscarServicioMatch(datos.comercio);
+    if (servicioMatch) {
+        cfAbrirModalPagoServicio(datos, servicioMatch);
+    } else {
+        cfAbrirModalGasto(datos);
+    }
 }
 
 function cfGmailLoginYChequear() {
@@ -3929,6 +3950,83 @@ async function cfGmailChequear() {
         cfGmailIdx   = 0;
         setTimeout(cfGmailMostrarSiguiente, 5500);
     } catch(e) { console.error('[CF Gmail] Error:', e.message); }
+}
+
+function cfAbrirModalPagoServicio(datos, servicio) {
+    const prev = document.getElementById('cf-gmail-overlay');
+    if (prev) prev.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cf-gmail-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    const montoPago = datos.monto ? datos.monto.toFixed(2) : (servicio.presupuesto || 0).toFixed(2);
+
+    overlay.innerHTML = `
+    <div style="background:#1e293b;border-radius:14px;width:100%;max-width:420px;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
+            <span style="font-size:24px;">🔧</span>
+            <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Pago de servicio fijo</h3>
+            <span style="font-size:10px;background:#0f766e;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">Santander</span>
+        </div>
+        <div style="background:#0f172a;border-radius:8px;padding:10px 12px;margin-bottom:14px;border-left:3px solid #0f766e;">
+            <div style="font-size:13px;font-weight:700;color:#f1f5f9;">${servicio.nombre}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">Presupuesto: $${(servicio.presupuesto||0).toLocaleString('es-AR')} · Pagado: $${(servicio.pagado||0).toLocaleString('es-AR')}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:11px;">
+            <div style="flex:1;">
+                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto pagado</label>
+                <input type="number" id="cf-gm-srv-monto" step="0.01" value="${montoPago}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha de pago</label>
+                <input type="date" id="cf-gm-srv-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            </div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">
+            Comercio detectado: <span style="color:#94a3b8;font-weight:600;">${datos.comercio}</span> · 
+            ${datos.tipo_tarjeta} terminada en ${datos.tarjeta}
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button onclick="cfConfirmarPagoServicio('${servicio.id}')" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#0f766e;color:white;cursor:pointer;">✓ Asentar pago</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Registrar como gasto corriente</button>
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+
+function cfConfirmarPagoServicio(servicioId) {
+    const monto = parseFloat(document.getElementById('cf-gm-srv-monto').value);
+    const fecha = document.getElementById('cf-gm-srv-fecha').value;
+
+    if (isNaN(monto) || monto <= 0) { alert('El monto no es válido.'); return; }
+
+    const s = listaServicios.find(x => x.id === servicioId);
+    if (!s) { alert('Servicio no encontrado.'); return; }
+
+    s.pagado = monto;
+    s.fPago  = fecha;
+    guardar();
+    render();
+
+    const datos = cfGmailQueue[cfGmailIdx];
+    if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
+    const ov = document.getElementById('cf-gmail-overlay');
+    if (ov) ov.remove();
+
+    cfGmailIdx++;
+    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 600);
+}
+
+function cfModalPagoACorriente() {
+    // El usuario prefiere registrar como gasto corriente aunque haya match
+    const datos = cfGmailQueue[cfGmailIdx];
+    cfAbrirModalGasto(datos);
 }
 
 function cfAbrirModalGasto(datos) {
