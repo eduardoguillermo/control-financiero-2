@@ -3935,29 +3935,34 @@ function cfAbrirModalGasto(datos) {
     const prev = document.getElementById('cf-gmail-overlay');
     if (prev) prev.remove();
 
+    // Seleccionar lista de tarjetas según moneda
+    const esUSD = datos.moneda === 'USD';
+    const listaTarjetasActual = esUSD ? listaTarjetasUSD : listaTarjetas;
+
     // Detectar tarjeta → medioPagoId
     let medioPagoId = '';
     if (datos.tipo_tarjeta) {
         const tipo = datos.tipo_tarjeta.toLowerCase();
         const num  = datos.tarjeta || '';
-        let tarjeta = listaTarjetas.find(t => num && t.nombre && t.nombre.includes(num));
+        let tarjeta = listaTarjetasActual.find(t => num && t.nombre && t.nombre.includes(num));
         if (!tarjeta) {
             if (tipo.includes('amex') || tipo.includes('american'))
-                tarjeta = listaTarjetas.find(t => /amex|american/i.test(t.nombre));
+                tarjeta = listaTarjetasActual.find(t => /amex|american/i.test(t.nombre));
             else if (tipo.includes('visa'))
-                tarjeta = listaTarjetas.find(t => /visa/i.test(t.nombre));
+                tarjeta = listaTarjetasActual.find(t => /visa/i.test(t.nombre));
         }
-        if (!tarjeta) tarjeta = listaTarjetas.find(t => /santander/i.test(t.nombre));
+        if (!tarjeta) tarjeta = listaTarjetasActual.find(t => /santander/i.test(t.nombre));
         if (tarjeta) medioPagoId = tarjeta.id;
     }
 
-    // Opciones de tarjetas
-    const opsTarjetas = listaTarjetas.map(t =>
+    // Opciones de tarjetas según moneda
+    const opsTarjetas = listaTarjetasActual.map(t =>
         `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`
     ).join('');
 
-    // Opciones de rubros
-    const opsRubros = listaRubros.map(r =>
+    // Opciones de rubros según moneda
+    const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
+    const opsRubros = listaRubrosActual.map(r =>
         `<option value="${r}">${r}</option>`
     ).join('');
 
