@@ -3897,6 +3897,29 @@ async function cfGmailBuscarGastos(token) {
 let cfGmailQueue = [];
 let cfGmailIdx   = 0;
 
+function cfGmailYaRegistrado(datos) {
+    // Verificar por contenido: mismo monto + misma fecha + mismo comercio aproximado
+    const needle = (datos.comercio || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 10);
+    const fecha  = datos.fecha || '';
+    const monto  = datos.monto || 0;
+
+    const enARS = listaCorrientes.some(c =>
+        Math.abs(c.monto - monto) < 0.01 &&
+        c.fechaPago === fecha &&
+        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
+    );
+    const enUSD = listaCorrientesUSD.some(c =>
+        Math.abs(c.monto - monto) < 0.01 &&
+        c.fechaPago === fecha &&
+        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
+    );
+    const enServ = listaServicios.some(s =>
+        Math.abs((s.pagado || 0) - monto) < 0.01 &&
+        s.fPago === fecha
+    );
+    return enARS || enUSD || enServ;
+}
+
 function cfBuscarServicioMatch(comercio) {
     if (!comercio || !listaServicios.length) return null;
     const needle = comercio.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -3914,7 +3937,16 @@ function cfBuscarServicioMatch(comercio) {
 function cfGmailMostrarSiguiente() {
     if (cfGmailIdx >= cfGmailQueue.length) return;
     const datos = cfGmailQueue[cfGmailIdx];
-    // Detectar si corresponde a un servicio fijo existente
+
+    // Saltar si ya fue registrado por contenido (evita duplicados por reenvío manual)
+    if (cfGmailYaRegistrado(datos)) {
+        console.log('[CF Gmail] Duplicado detectado, saltando:', datos.comercio, datos.fecha);
+        if (datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
+        cfGmailIdx++;
+        if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 200);
+        return;
+    }
+
     const servicioMatch = cfBuscarServicioMatch(datos.comercio);
     if (servicioMatch) {
         cfAbrirModalPagoServicio(datos, servicioMatch);
