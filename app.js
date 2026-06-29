@@ -36,6 +36,10 @@ let filtroCorrientes = '';
 let filtroClase = '';
 let _syncTimer = null;
 let _syncPendiente = false;
+
+// ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
+async function syncSilencioso() { return; }
+async function syncAlSalir() { return; }
 let _syncActivo = false;
 
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
