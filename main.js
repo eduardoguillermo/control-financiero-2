@@ -475,7 +475,7 @@ function renderTabs() {
     restoreEl.onclick=driveRestaurar;
     bar.appendChild(restoreEl);
     const gmailEl = document.createElement('button'); gmailEl.id='btn-gmail-santander';
-    gmailEl.style.cssText='background:#ea4335;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;display:none;';
+    gmailEl.style.cssText='background:#ea4335;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;' + (cfEsMovil() ? 'display:none;' : '');
     gmailEl.innerText='📧 Gmail'; gmailEl.title='Leer mails de Santander';
     gmailEl.onclick=cfGmailLoginYChequear;
     bar.appendChild(gmailEl);
