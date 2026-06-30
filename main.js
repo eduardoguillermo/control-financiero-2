@@ -4042,13 +4042,15 @@ function cfConfirmarPagoServicio(servicioId) {
     if (isNaN(monto) || monto <= 0) { alert('El monto no es válido.'); return; }
 
     let s = listaServicios.find(x => x.id === servicioId);
-    if (!s) s = listaServiciosUSD.find(x => x.id === servicioId);
+    let esUSD = false;
+    if (!s) { s = listaServiciosUSD.find(x => x.id === servicioId); esUSD = true; }
     if (!s) { alert('Servicio no encontrado.'); return; }
 
     s.pagado = monto;
     s.fPago  = fecha;
     guardar();
-    render();
+    if (esUSD) { if (typeof renderDolares === 'function') renderDolares(); }
+    else { render(); }
 
     const datos = cfGmailQueue[cfGmailIdx];
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
@@ -4204,7 +4206,8 @@ function cfConfirmarGasto() {
     }
 
     guardar();
-    render();
+    if (moneda === 'USD') { if (typeof renderDolares === 'function') renderDolares(); }
+    else { render(); }
 
     const datos = cfGmailQueue[cfGmailIdx];
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
