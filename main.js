@@ -229,79 +229,6 @@ function syncDebounce() {
 // ID del archivo sync único en Drive (para sobreescribir en lugar de crear nuevos)
 let _driveFileId = null;
 
-async function syncSilencioso() {
-    // No bloquear si _syncActivo — forzamos reset si lleva más de 30s colgado
-    if(_syncActivo) { _syncActivo = false; }
-    if(!gToken) return;
-    _syncActivo = true;
-    syncSetBadge('sync');
-    try {
-        const groqKey = localStorage.getItem('groq_api_key')||'';
-        const data = JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos,groqKey});
-
-        // Si no tenemos el ID del archivo, buscarlo en Drive
-        if(!_driveFileId) {
-            const listR = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&q=name%3D%22backup_autosync.json%22',
-                {headers:{Authorization:'Bearer '+gToken}});
-            if(listR.ok) {
-                const listD = await listR.json();
-                if(listD.files && listD.files.length > 0) _driveFileId = listD.files[0].id;
-            } else if(listR.status === 401) { gTokenLimpiar(); _syncActivo=false; syncSetBadge('err'); return; }
-        }
-
-        let resp;
-        if(_driveFileId) {
-            // Sobreescribir archivo existente (PATCH)
-            resp = await fetch('https://www.googleapis.com/upload/drive/v3/files/'+_driveFileId+'?uploadType=media',
-                {method:'PATCH', headers:{Authorization:'Bearer '+gToken,'Content-Type':'application/json'}, body:data});
-        } else {
-            // Crear archivo nuevo con nombre fijo
-            const meta = JSON.stringify({name:'backup_autosync.json',parents:['appDataFolder']});
-            const form = new FormData();
-            form.append('metadata', new Blob([meta],{type:'application/json'}));
-            form.append('file', new Blob([data],{type:'application/json'}));
-            resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-                {method:'POST', headers:{Authorization:'Bearer '+gToken}, body:form});
-        }
-
-        if(resp.ok) {
-            const f = await resp.json();
-            if(f.id) _driveFileId = f.id;
-            _syncPendiente = false;
-            syncSetBadge('ok');
-        } else {
-            if(resp.status === 401) { gTokenLimpiar(); _driveFileId=null; }
-            syncSetBadge('err');
-        }
-    } catch(e) { syncSetBadge('err'); }
-    _syncActivo = false;
-}
-
-async function syncAlSalir() {
-    // Recuperar token persistido si la variable en memoria está vacía
-    if(!gToken) gTokenCargarLocal();
-    if(!gToken) {
-        // Si no hay token, intentar obtenerlo silenciosamente
-        const ok = await new Promise(resolve => {
-            driveGetToken(t => { if(t) resolve(true); else resolve(false); });
-            setTimeout(()=>resolve(false), 8000);
-        });
-        if(!ok) { alert('Para sincronizar antes de salir, autenticá Drive con el botón ☁️ Drive.'); return; }
-    }
-    if(!_syncPendiente) {
-        alert('✅ Backup al día. Ya podés cerrar la pestaña.');
-        window.close();
-        return;
-    }
-    clearTimeout(_syncTimer);
-    _syncActivo = false; // reset por si estaba colgado
-    await syncSilencioso();
-    if(!_syncPendiente) {
-        alert('✅ Sincronizado con Drive. Ya podés cerrar la pestaña.');
-    } else {
-        alert('⚠️ No se pudo sincronizar. Usá el botón ☁️ Drive manualmente antes de cerrar.');
-    }
-}
 
 
 // ═══════════════════════════════════════════
@@ -2815,6 +2742,10 @@ function driveGetToken(cb) {
     });
 }
 function driveSubir() {
+    alert('⚠️ El backup a Drive está deshabilitado en Control Financiero v2 para no mezclar con la versión de producción. Esta versión solo lee Gmail.');
+    return;
+}
+function _driveSubir_DISABLED_ORIGINAL() {
     driveGetToken(token=>{
         const a=new Date(), ts=a.getFullYear()+String(a.getMonth()+1).padStart(2,'0')+String(a.getDate()).padStart(2,'0')+'_'+String(a.getHours()).padStart(2,'0')+String(a.getMinutes()).padStart(2,'0');
         const nombre='backup_finanzas_'+ts+'.json';
