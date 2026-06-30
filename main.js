@@ -3917,17 +3917,20 @@ function cfGmailYaRegistrado(datos) {
         Math.abs((s.pagado || 0) - monto) < 0.01 &&
         s.fPago === fecha
     );
-    return enARS || enUSD || enServ;
+    const enServUSD = listaServiciosUSD.some(s =>
+        Math.abs((s.pagado || 0) - monto) < 0.01 &&
+        s.fPago === fecha
+    );
+    return enARS || enUSD || enServ || enServUSD;
 }
 
-function cfBuscarServicioMatch(comercio) {
-    if (!comercio || !listaServicios.length) return null;
+function cfBuscarServicioMatch(comercio, esUSD) {
+    const lista = esUSD ? listaServiciosUSD : listaServicios;
+    if (!comercio || !lista || !lista.length) return null;
     const needle = comercio.toLowerCase().replace(/[^a-z0-9]/g, '');
-    // Buscar servicio pendiente de pago con nombre similar
-    return listaServicios.find(s => {
+    return lista.find(s => {
         if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false; // ya pagado
         const hay = (s.nombre || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        // Match si uno contiene al otro con al menos 4 caracteres
         if (needle.length >= 4 && hay.includes(needle.substring(0, Math.min(needle.length, 8)))) return true;
         if (hay.length >= 4 && needle.includes(hay.substring(0, Math.min(hay.length, 8)))) return true;
         return false;
@@ -3947,7 +3950,7 @@ function cfGmailMostrarSiguiente() {
         return;
     }
 
-    const servicioMatch = cfBuscarServicioMatch(datos.comercio);
+    const servicioMatch = cfBuscarServicioMatch(datos.comercio, datos.moneda === 'USD');
     if (servicioMatch) {
         cfAbrirModalPagoServicio(datos, servicioMatch);
     } else {
@@ -4038,7 +4041,8 @@ function cfConfirmarPagoServicio(servicioId) {
 
     if (isNaN(monto) || monto <= 0) { alert('El monto no es válido.'); return; }
 
-    const s = listaServicios.find(x => x.id === servicioId);
+    let s = listaServicios.find(x => x.id === servicioId);
+    if (!s) s = listaServiciosUSD.find(x => x.id === servicioId);
     if (!s) { alert('Servicio no encontrado.'); return; }
 
     s.pagado = monto;
