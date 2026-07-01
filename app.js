@@ -410,6 +410,11 @@ function renderTabs() {
     gmailEl.innerText='📧 Gmail'; gmailEl.title='Leer mails de Santander';
     gmailEl.onclick=cfGmailLoginYChequear;
     bar.appendChild(gmailEl);
+    const ayudaEl = document.createElement('button'); ayudaEl.id='btn-ayuda';
+    ayudaEl.style.cssText='background:#6366f1;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
+    ayudaEl.innerText='❓ Ayuda';
+    ayudaEl.onclick=()=>window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes');
+    bar.appendChild(ayudaEl);
     const snapshotEl = document.createElement('button'); snapshotEl.id='btn-snapshot-local';
     snapshotEl.style.cssText='background:#0f766e;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
     snapshotEl.innerText='💾 Local'; snapshotEl.title='Ver/restaurar snapshots locales';
