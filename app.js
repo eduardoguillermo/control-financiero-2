@@ -42,6 +42,30 @@ async function syncSilencioso() { return; }
 async function syncAlSalir() { return; }
 let _syncActivo = false;
 
+// Menú del botón único de Drive (Subir / Restaurar)
+function cfToggleDriveMenu() {
+    const existente = document.getElementById('drive-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('sync-badge');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='drive-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-190)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:190px;';
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+    m.appendChild(mkOpt('☁️ Subir backup ahora', driveSubir, false));
+    m.appendChild(mkOpt('📂 Restaurar backup...', driveRestaurar, true));
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
 const CF_BKUP_KEY = 'cf_backups';
 const CF_BKUP_MAX = 10;
@@ -211,11 +235,12 @@ function parseNum(str) {
 function syncSetBadge(estado) {
     const b = document.getElementById('sync-badge');
     if(!b) return;
-    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#15803d;cursor:default;'; }
-    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fef9c3;color:#854d0e;cursor:default;'; }
-    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dbeafe;color:#1d4ed8;cursor:default;'; }
-    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fee2e2;color:#b91c1c;cursor:default;'; }
-    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;'; }
+    const base='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;cursor:pointer;border:none;';
+    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText=base+'background:#dcfce7;color:#15803d;'; }
+    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText=base+'background:#fef9c3;color:#854d0e;'; }
+    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText=base+'background:#dbeafe;color:#1d4ed8;'; }
+    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText=base+'background:#fee2e2;color:#b91c1c;'; }
+    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText=base+'background:#f1f5f9;color:#64748b;'; }
 }
 function syncDebounce() {
     if(!gToken) gTokenCargarLocal();
@@ -388,23 +413,14 @@ function renderTabs() {
     mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
-    // Badge sync + botón Salir — siempre visible en la tab bar
+    // Botón único de Drive (fusiona badge de estado + subir + restaurar) — botón Salir queda aparte, sin tocar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
-    const badgeEl = document.createElement('span'); badgeEl.id='sync-badge';
-    badgeEl.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;align-self:center;white-space:nowrap;';
-    badgeEl.innerText='☁️ Drive'; badgeEl.onclick=syncAlSalir;
-    bar.appendChild(badgeEl);
-    const backupEl = document.createElement('button'); backupEl.id='btn-backup-global';
-    backupEl.style.cssText='background:#4285f4;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:6px;align-self:center;white-space:nowrap;';
-    backupEl.innerText='☁️ BK'; backupEl.title='Subir backup ahora';
-    backupEl.onclick=driveSubir;
-    bar.appendChild(backupEl);
-    const restoreEl = document.createElement('button'); restoreEl.id='btn-restore-global';
-    restoreEl.style.cssText='background:#4285f4;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    restoreEl.innerText='📂 BK'; restoreEl.title='Restaurar backup';
-    restoreEl.onclick=driveRestaurar;
-    bar.appendChild(restoreEl);
+    const driveEl = document.createElement('button'); driveEl.id='sync-badge';
+    driveEl.style.cssText='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;border:none;align-self:center;white-space:nowrap;';
+    driveEl.innerText='☁️ Drive'; driveEl.title='Backup a Google Drive';
+    driveEl.onclick=(e)=>{ e.stopPropagation(); cfToggleDriveMenu(); };
+    bar.appendChild(driveEl);
     const gmailEl = document.createElement('button'); gmailEl.id='btn-gmail-santander';
     gmailEl.style.cssText='background:#ea4335;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;' + (cfEsMovil() ? 'display:none;' : '');
     gmailEl.innerText='📧 Gmail'; gmailEl.title='Leer mails de Santander';
@@ -2696,7 +2712,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.34';
+const APP_VERSION = 'v3.7.35';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = 'cf_gmail_processed';
