@@ -1,16 +1,19 @@
 // ═══════════════════════════════════════════
 //  ESTADO GLOBAL
 // ═══════════════════════════════════════════
+// Namespace de storage exclusivo de DEV — evita compartir localStorage/IndexedDB con producción
+// (mismo origen eduardoguillermo.github.io, distinta ruta: el navegador comparte storage por origen)
+const CF_NS = 'dev2_';
 const K = {
-    rubros:'f_r_v2_2', bancos:'f_bancos_v2_4', tarjetas:'f_tarjetas_v2_4',
-    servicios:'f_servicios_v2_4', corrientes:'f_corrientes_v2_4',
-    transferencias:'f_transferencias_v3', cuotas:'f_cuotas_v3', historico:'f_historico_v3',
-    cuentasUSD:'f_cuentasUSD_v3', tarjetasUSD:'f_tarjetasUSD_v3',
-    serviciosUSD:'f_serviciosUSD_v3', corrientesUSD:'f_corrientesUSD_v3',
-    tipoCambio:'f_tipoCambio_v3',
-    instrumentos:'f_instrumentos_v1',
-    acciones:'f_acciones_v1',
-    ingresos:'f_ingresos_v1'
+    rubros:CF_NS+'f_r_v2_2', bancos:CF_NS+'f_bancos_v2_4', tarjetas:CF_NS+'f_tarjetas_v2_4',
+    servicios:CF_NS+'f_servicios_v2_4', corrientes:CF_NS+'f_corrientes_v2_4',
+    transferencias:CF_NS+'f_transferencias_v3', cuotas:CF_NS+'f_cuotas_v3', historico:CF_NS+'f_historico_v3',
+    cuentasUSD:CF_NS+'f_cuentasUSD_v3', tarjetasUSD:CF_NS+'f_tarjetasUSD_v3',
+    serviciosUSD:CF_NS+'f_serviciosUSD_v3', corrientesUSD:CF_NS+'f_corrientesUSD_v3',
+    tipoCambio:CF_NS+'f_tipoCambio_v3',
+    instrumentos:CF_NS+'f_instrumentos_v1',
+    acciones:CF_NS+'f_acciones_v1',
+    ingresos:CF_NS+'f_ingresos_v1'
 };
 let listaRubros        = leer(K.rubros)        || ["Carnicería / Verdulería","Supermercado / Almacén","Gastos Auto / Combustible"];
 let listaBancos        = leer(K.bancos)        || [];
@@ -28,9 +31,9 @@ let tipoCambio         = leer(K.tipoCambio)    || 1200;
 let listaInstrumentos  = leer(K.instrumentos)  || [];
 let listaAcciones      = leer(K.acciones)      || [];
 let listaIngresos      = leer(K.ingresos)      || [];
-let listaPresupRubros    = leer('f_presup_rubros_v1')    || {};
-let listaPresupRubrosUSD = leer('f_presup_rubros_usd_v1') || {};
-let listaRubrosUSD       = leer('f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
+let listaPresupRubros    = leer(CF_NS+'f_presup_rubros_v1')    || {};
+let listaPresupRubrosUSD = leer(CF_NS+'f_presup_rubros_usd_v1') || {};
+let listaRubrosUSD       = leer(CF_NS+'f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
 let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
@@ -72,7 +75,7 @@ function cfToggleDriveMenu() {
 }
 
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
-const CF_BKUP_KEY = 'cf_backups';
+const CF_BKUP_KEY = CF_NS+'cf_backups';
 const CF_BKUP_MAX = 10;
 
 function cfCargarSnapshots() {
@@ -201,9 +204,9 @@ function guardar() {
         localStorage.setItem(K.tipoCambio,     JSON.stringify(tipoCambio));
         localStorage.setItem(K.instrumentos,   JSON.stringify(listaInstrumentos));
         localStorage.setItem(K.acciones,       JSON.stringify(listaAcciones));
-        localStorage.setItem('f_presup_rubros_v1',     JSON.stringify(listaPresupRubros));
-        localStorage.setItem('f_presup_rubros_usd_v1', JSON.stringify(listaPresupRubrosUSD));
-        localStorage.setItem('f_rubros_usd_v1',         JSON.stringify(listaRubrosUSD));
+        localStorage.setItem(CF_NS+'f_presup_rubros_v1',     JSON.stringify(listaPresupRubros));
+        localStorage.setItem(CF_NS+'f_presup_rubros_usd_v1', JSON.stringify(listaPresupRubrosUSD));
+        localStorage.setItem(CF_NS+'f_rubros_usd_v1',         JSON.stringify(listaRubrosUSD));
         localStorage.setItem(K.ingresos,       JSON.stringify(listaIngresos));
         syncDebounce();
     } catch(e) {
@@ -268,7 +271,7 @@ let _driveFileId = null;
 // ═══════════════════════════════════════════════════════════════
 //  CARPETA LOCAL — File System Access API + IndexedDB
 // ═══════════════════════════════════════════════════════════════
-const CF_FOLDER_DB    = 'cf-folder-db';
+const CF_FOLDER_DB    = CF_NS+'cf-folder-db';
 const CF_FOLDER_STORE = 'handles';
 const CF_FOLDER_KEY   = 'carpeta';
 const CF_MAX_BK       = 7;
@@ -1344,7 +1347,7 @@ function cargarDatos(res) {
     if(res.listaPresupRubrosUSD) listaPresupRubrosUSD = res.listaPresupRubrosUSD;
     if(res.listaRubrosUSD)       listaRubrosUSD       = res.listaRubrosUSD;
     if(res.listaIngresos)        listaIngresos        = res.listaIngresos;
-    if(res.groqKey)            localStorage.setItem('groq_api_key', res.groqKey);
+    if(res.groqKey)            localStorage.setItem(CF_NS+'groq_api_key', res.groqKey);
 }
 function importar(event) {
     const file=event.target.files[0]; if(!file) return;
@@ -2717,12 +2720,12 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.37';
+const APP_VERSION = 'v3.7.38';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
-const CF_GMAIL_PROCESSED_KEY = 'cf_gmail_processed';
-const GTOKEN_KEY='cf_gtoken';
-const GTOKEN_EXP_KEY='cf_gtoken_exp';
+const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
+const GTOKEN_KEY=CF_NS+'cf_gtoken';
+const GTOKEN_EXP_KEY=CF_NS+'cf_gtoken_exp';
 let gToken=null;
 let _alertasMostradas=false;
 
@@ -3070,12 +3073,12 @@ async function enviarConsultaAI() {
     _aiHistorial.push({ role: 'user', content: pregunta });
 
     // Verificar API key de Gemini
-    var apiKey = localStorage.getItem('groq_api_key') || '';
+    var apiKey = localStorage.getItem(CF_NS+'groq_api_key') || '';
     if(!apiKey) {
         var k = prompt('Ingres\u00e1 tu API key de Groq (se guarda solo en este dispositivo):');
         if(!k || !k.trim()) { inp.disabled=false; if(btn) btn.disabled=false; return; }
         apiKey = k.trim();
-        localStorage.setItem('groq_api_key', apiKey);
+        localStorage.setItem(CF_NS+'groq_api_key', apiKey);
     }
 
     // Armar historial para Groq (formato OpenAI compatible)
@@ -3102,7 +3105,7 @@ async function enviarConsultaAI() {
         var data = await res.json();
         if(data.error) {
             if(res.status === 401 || res.status === 403) {
-                localStorage.removeItem('groq_api_key');
+                localStorage.removeItem(CF_NS+'groq_api_key');
                 if(typing) typing.innerText = '\u26A0\uFE0F API key inv\u00e1lida. Recargá y volvé a ingresarla.';
             } else {
                 if(typing) typing.innerText = '\u26A0\uFE0F Error: ' + (data.error.message || 'desconocido');
