@@ -2693,7 +2693,7 @@ function actualizarPresupRubroUSD(inp) {
 // ═══════════════════════════════════════════
 // ── HELPER: botón de ayuda contextual ──
 function btnAyuda(ancla) {
-    return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:none;border:1.5px solid #4f46e5;color:#4f46e5;border-radius:50%;width:18px;height:18px;font-size:9px;font-weight:700;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;" class="no-print">?</button>`;
+    return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
 const APP_VERSION = 'v3.7.34';
