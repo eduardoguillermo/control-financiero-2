@@ -605,7 +605,7 @@ function buildMesActual() {
       <div class="grid-principal">
         <div>
           <div class="panel panel-bancos no-print">
-            <h3 class="panel-title">🏦 Cuentas Bancarias / Efectivo</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">🏦 Cuentas Bancarias / Efectivo ${btnAyuda('bancos')}</h3>
             <div class="form-block">
               <form id="form-banco">
                 <div class="form-group"><label>Nombre</label><input type="text" id="banco-nombre" required placeholder="Ej. Galicia, MercadoPago"></div>
@@ -640,7 +640,7 @@ function buildMesActual() {
             </div>
           </div>
           <div class="panel panel-tarjetas no-print">
-            <h3 class="panel-title">💳 Tarjetas de Crédito</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">💳 Tarjetas de Crédito ${btnAyuda('tarjetas')}</h3>
             <div class="form-block">
               <form id="form-tarjeta">
                 <div class="form-group"><label>Nombre</label><input type="text" id="tarjeta-nombre" required placeholder="Ej. Visa Galicia"></div>
@@ -651,7 +651,7 @@ function buildMesActual() {
             <table><thead><tr><th style="width:55%">Tarjeta</th><th style="width:35%" class="tr">Consumo ($)</th><th style="width:10%" class="no-print"></th></tr></thead><tbody id="t-tarjetas"></tbody></table>
           </div>
           <div class="panel panel-transf no-print">
-            <h3 class="panel-title">↔️ Transferencias entre Cuentas</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">↔️ Transferencias entre Cuentas ${btnAyuda('transferencias')}</h3>
             <div class="form-block">
               <form id="form-transf">
                 <div class="form-row"><div><label>Origen</label><select id="transf-origen" required></select></div><div><label>Destino</label><select id="transf-destino" required></select></div></div>
@@ -662,7 +662,7 @@ function buildMesActual() {
             <table><thead><tr><th style="width:18%">Fecha</th><th style="width:30%">Origen</th><th style="width:30%">Destino</th><th style="width:17%" class="tr">Monto</th><th style="width:5%" class="no-print"></th></tr></thead><tbody id="t-transf"></tbody></table>
           </div>
           <div class="panel no-print" style="border-top:4px solid #6366f1;">
-            <h3 class="panel-title">💳 Compras en Cuotas</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">💳 Compras en Cuotas ${btnAyuda('cuotas')}</h3>
             <div class="form-block">
               <form id="form-cuota">
                 <div class="form-row">
@@ -680,7 +680,7 @@ function buildMesActual() {
             <table><thead><tr><th style="width:35%">Descripción</th><th style="width:20%" class="tr">Cuota ($)</th><th style="width:20%" class="tc">Progreso</th><th style="width:18%" class="tr">Resto ($)</th><th style="width:7%" class="no-print"></th></tr></thead><tbody id="t-cuotas"></tbody></table>
           </div>
           <div class="panel panel-rubros no-print">
-            <h3 class="panel-title">⚙️ Rubros de Gasto Corriente</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">⚙️ Rubros de Gasto Corriente ${btnAyuda('rubros')}</h3>
             <div class="form-block">
               <form id="form-rubro" style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
                 <input type="text" id="rubro-nombre" required placeholder="Ej. Carnicería">
@@ -692,7 +692,7 @@ function buildMesActual() {
         </div>
         <div>
           <div class="panel panel-servicios">
-            <h3 class="panel-title">📋 Servicios y Vencimientos Fijos</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">📋 Servicios y Vencimientos Fijos ${btnAyuda('servicios')}</h3>
             <div class="form-block no-print">
               <form id="form-servicio">
                 <div class="form-row">
@@ -716,7 +716,7 @@ function buildMesActual() {
             </tr></thead><tbody id="t-servicios"></tbody><tfoot id="t-servicios-foot"></tfoot></table>
           </div>
           <div class="panel panel-corrientes">
-            <h3 class="panel-title">🛍️ Gastos Corrientes / Caja Diaria</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">🛍️ Gastos Corrientes / Caja Diaria ${btnAyuda('corrientes')}</h3>
             <div class="form-block no-print">
               <form id="form-corriente">
                 <div class="form-row">
@@ -1409,7 +1409,7 @@ function buildDolares() {
       <div class="grid-principal">
         <div>
           <div class="panel no-print" style="border-top:4px solid #16a34a;">
-            <h3 class="panel-title">🏦 Cuentas en USD</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">🏦 Cuentas en USD ${btnAyuda('dolares')}</h3>
             <div class="form-block">
               <form id="form-cusd">
                 <div class="form-group"><label>Nombre</label><input type="text" id="cusd-nombre" required placeholder="Ej. Billetera USD"></div>
@@ -1420,7 +1420,7 @@ function buildDolares() {
             <table><thead><tr><th style="width:40%">Cuenta</th><th style="width:28%" class="tr">Saldo (USD)</th><th style="width:27%" class="tr">En pesos</th><th style="width:5%"></th></tr></thead><tbody id="t-cusd"></tbody></table>
           </div>
           <div class="panel no-print" style="border-top:4px solid #a855f7;">
-            <h3 class="panel-title">💳 Tarjetas en USD</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">💳 Tarjetas en USD ${btnAyuda('dolares')}</h3>
             <div class="form-block">
               <form id="form-tusd">
                 <div class="form-group"><label>Nombre</label><input type="text" id="tusd-nombre" required placeholder="Ej. Visa Santander USD"></div>
@@ -1433,7 +1433,7 @@ function buildDolares() {
         </div>
         <div>
           <div class="panel" style="border-top:4px solid #4f46e5;">
-            <h3 class="panel-title">📋 Servicios Fijos en USD</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">📋 Servicios Fijos en USD ${btnAyuda('dolares')}</h3>
             <div class="form-block no-print">
               <form id="form-susd">
                 <div class="form-row">
@@ -1447,7 +1447,7 @@ function buildDolares() {
             <table><thead><tr><th style="width:22%">Servicio</th><th style="width:13%" class="tc">Vto.</th><th style="width:12%" class="tr">Presup.</th><th style="width:12%" class="tr">Pagado</th><th style="width:12%" class="tc">F.Pago</th><th style="width:15%">Medio</th><th style="width:9%" class="tc">Estado</th><th style="width:4%" class="no-print"></th></tr></thead><tbody id="t-susd"></tbody></table>
           </div>
           <div class="panel" style="border-top:4px solid #10b981;">
-            <h3 class="panel-title">🛍️ Gastos Corrientes en USD</h3>
+            <h3 class="panel-title" style="display:flex;align-items:center;">🛍️ Gastos Corrientes en USD ${btnAyuda('dolares')}</h3>
             <div class="form-block no-print">
               <form id="form-ccusd">
                 <div class="form-row">
@@ -2691,6 +2691,11 @@ function actualizarPresupRubroUSD(inp) {
 // ═══════════════════════════════════════════
 //  GOOGLE DRIVE
 // ═══════════════════════════════════════════
+// ── HELPER: botón de ayuda contextual ──
+function btnAyuda(ancla) {
+    return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:none;border:1.5px solid #4f46e5;color:#4f46e5;border-radius:50%;width:18px;height:18px;font-size:9px;font-weight:700;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;" class="no-print">?</button>`;
+}
+
 const APP_VERSION = 'v3.7.34';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
