@@ -158,11 +158,12 @@
     setTimeout(()=>{
         const bar = document.getElementById('cf-splash-bar');
         if(bar) bar.style.width = '100%';
+        bar.style.transition = 'width 6.5s cubic-bezier(.4,0,.2,1)';
     }, 50);
     setTimeout(()=>{
         const splash = document.getElementById('cf-splash');
         if(splash){ splash.style.opacity='0'; setTimeout(()=>{ if(splash.parentNode) splash.parentNode.removeChild(splash); },400); }
-    }, 2200);
+    }, 7000);
 })();
 </script>
 
