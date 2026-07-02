@@ -360,20 +360,28 @@
     <p>Todos los datos se guardan en el <strong>localStorage</strong> del navegador. Esto significa que son locales al dispositivo y al navegador que se usa. Si se borra el caché o se cambia de navegador, los datos no estarán disponibles a menos que se haya hecho un backup.</p>
 
     <h2>Métodos de backup</h2>
-    <div class="card">
-      <div class="card-title">☁️ Google Drive (automático)</div>
-      <div class="card-body">Al hacer login con Google, la app sincroniza automáticamente cada vez que se detectan cambios. También al cerrar con el botón 🚪 Salir.</div>
+    <div class="card" style="border-left: 4px solid #dc2626;">
+      <div class="card-title">☁️ Google Drive — DESHABILITADO en desarrollo</div>
+      <div class="card-body">A propósito, para no mezclar backups con producción (mismo proyecto de Google Cloud). En esta versión solo se usan snapshot local y carpeta local. El botón de Drive no sube nada.</div>
     </div>
     <div class="card">
       <div class="card-title">📂 Carpeta local (automático)</div>
-      <div class="card-body">Vinculando una carpeta del sistema de archivos, la app guarda un backup local automáticamente (últimos 7 backups). Requiere Chrome/Edge en escritorio.</div>
+      <div class="card-body">Vinculando una carpeta del sistema de archivos, la app guarda un backup local automáticamente (últimos 7 backups) cada vez que se guardan cambios. Requiere Chrome/Edge en escritorio.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📸 Snapshot local</div>
+      <div class="card-body">La app guarda automáticamente snapshots en localStorage al cerrar la pestaña o al ocultarla (cambiar de pestaña), manteniendo los últimos 10. También se pueden ver y restaurar manualmente desde el modal de snapshots.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚪 Salir (backup completo)</div>
+      <div class="card-body">Al tocar el botón 🚪 Salir, la app hace snapshot local y backup en carpeta (si está vinculada), y muestra un cartel con el detalle de cada uno. La línea de Drive figura como deshabilitada, por diseño.</div>
     </div>
     <div class="card">
       <div class="card-title">💾 Exportar JSON (manual)</div>
       <div class="card-body">El botón "Exportar" descarga un archivo JSON con todos los datos. Puede importarse luego con el botón "Importar".</div>
     </div>
 
-    <div class="warning">⚠️ Se recomienda hacer backup a Drive y/o carpeta local regularmente. Los datos en localStorage pueden perderse si se borra la caché del navegador.</div>
+    <div class="warning">⚠️ Se recomienda hacer backup a carpeta local regularmente. Los datos en localStorage pueden perderse si se borra la caché del navegador, y en esta versión de desarrollo no hay respaldo automático en Drive.</div>
   </section>
 
   <!-- MES ACTUAL -->
@@ -423,7 +431,7 @@
       <tr><td>📂 Carpeta</td><td>Vincula una carpeta local para backup automático</td></tr>
       <tr><td>☁️ Drive</td><td>Sube un backup manual a Google Drive</td></tr>
       <tr><td>📂 Drive (bajar)</td><td>Lista y restaura backups guardados en Google Drive</td></tr>
-      <tr><td>📧 Gmail</td><td>Lee mails de Santander y detecta gastos automáticamente (solo PC)</td></tr>
+      <tr><td>📧 Gmail</td><td>Lee mails de Santander y MercadoPago y detecta gastos automáticamente (solo PC)</td></tr>
     </table>
   </section>
 
@@ -770,23 +778,23 @@
       <span class="section-icon">📧</span>
       <div>
         <div class="section-title">Módulo Gmail</div>
-        <div class="section-subtitle">Registro automático de gastos desde mails de Santander</div>
+        <div class="section-subtitle">Registro automático de gastos desde mails de Santander y MercadoPago</div>
       </div>
     </div>
-    <p>El módulo Gmail lee automáticamente los correos de débito y consumo que envía el Banco Santander Argentina y los registra en la app sin necesidad de ingresarlos manualmente.</p>
+    <p>El módulo Gmail lee automáticamente los correos de débito y consumo que envía el Banco Santander Argentina, y los correos de compra y transferencia que envía MercadoPago (<code>info@mercadopago.com</code>), registrando los gastos en la app sin necesidad de ingresarlos manualmente.</p>
 
     <h2>Requisitos</h2>
     <ul>
       <li>Gmail API habilitada en el proyecto Google Cloud.</li>
-      <li>Reenvío automático configurado desde la cuenta personal (donde llegan los mails del banco) hacia la cuenta del proyecto Google Cloud.</li>
-      <li>Servicios fijos cargados con nombres similares a los comercios de Santander (para el matching automático).</li>
+      <li>Reenvío automático configurado desde la cuenta personal (donde llegan los mails del banco y/o MercadoPago) hacia la cuenta del proyecto Google Cloud. Se necesita un filtro de reenvío separado por cada remitente (Santander y MercadoPago).</li>
+      <li>Servicios fijos cargados con nombres similares a los comercios de Santander o MercadoPago (para el matching automático).</li>
     </ul>
 
     <h2>Cómo usar</h2>
     <div class="steps">
       <div class="step"><div class="step-num">1</div><div class="step-body">Hacer clic en el botón rojo <strong>📧 Gmail</strong> del header (solo visible en PC).</div></div>
       <div class="step"><div class="step-num">2</div><div class="step-body">Seleccionar la cuenta Google del proyecto y aceptar los permisos.</div></div>
-      <div class="step"><div class="step-num">3</div><div class="step-body">La app busca mails de Santander de los últimos 30 días y muestra los gastos detectados en modales.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">La app busca mails de Santander y de MercadoPago de los últimos 30 días y muestra los gastos detectados en modales.</div></div>
       <div class="step"><div class="step-num">4</div><div class="step-body">Confirmar o cancelar cada gasto detectado.</div></div>
     </div>
 
@@ -794,20 +802,88 @@
     <div class="card" style="border-left: 4px solid #0f766e;">
       <div class="card-title">🔧 Modal verde — Pago de servicio fijo</div>
       <div class="card-body">Aparece cuando el comercio del mail coincide con un servicio fijo pendiente. Permite asentar el pago directamente en el servicio existente.</div>
+      <div style="margin-top:12px;display:flex;justify-content:center;">
+        <svg viewBox="0 0 440 300" width="100%" style="max-width:420px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,0.25);">
+          <rect width="440" height="300" rx="14" fill="#1e293b"/>
+          <line x1="18" y1="52" x2="422" y2="52" stroke="#334155" stroke-width="1"/>
+          <text x="20" y="34" font-family="Segoe UI, sans-serif" font-size="20">🔧</text>
+          <text x="50" y="38" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f1f5f9">Pago de servicio fijo</text>
+          <rect x="358" y="22" width="64" height="18" rx="9" fill="#0f766e"/>
+          <text x="390" y="35" font-family="Segoe UI, sans-serif" font-size="10" font-weight="600" fill="white" text-anchor="middle">MercadoPago</text>
+          <rect x="18" y="64" width="404" height="42" rx="8" fill="#0f172a"/>
+          <rect x="18" y="64" width="3" height="42" fill="#0f766e"/>
+          <text x="30" y="82" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#f1f5f9">Edemsa</text>
+          <text x="30" y="98" font-family="Segoe UI, sans-serif" font-size="11" fill="#64748b">Presupuesto: $112.031 · Pagado: $0</text>
+          <text x="18" y="126" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">MONTO PAGADO</text>
+          <rect x="18" y="132" width="192" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="154" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">112031.50</text>
+          <text x="228" y="126" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">FECHA DE PAGO</text>
+          <rect x="228" y="132" width="194" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="240" y="154" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">01/07/2026</text>
+          <text x="18" y="186" font-family="Segoe UI, sans-serif" font-size="11" fill="#64748b">Comercio: <tspan font-weight="600" fill="#94a3b8">MERPAGOEDEMSA</tspan> · Transferencia</text>
+          <rect x="18" y="200" width="404" height="40" rx="10" fill="#0f766e"/>
+          <text x="220" y="225" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="white" text-anchor="middle">✓ Asentar pago</text>
+          <rect x="18" y="250" width="196" height="34" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="116" y="271" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8" text-anchor="middle">↩ Registrar como corriente</text>
+          <rect x="226" y="250" width="196" height="34" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="324" y="271" font-family="Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#94a3b8" text-anchor="middle">✕ Cancelar</text>
+        </svg>
+      </div>
     </div>
     <div class="card" style="border-left: 4px solid #ea4335;">
       <div class="card-title">📧 Modal rojo — Gasto corriente</div>
       <div class="card-body">Aparece cuando no hay match con servicios fijos. Registra el gasto en la lista de corrientes ARS o USD según la moneda detectada.</div>
+      <div style="margin-top:12px;display:flex;justify-content:center;">
+        <svg viewBox="0 0 440 470" width="100%" style="max-width:420px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,0.25);">
+          <rect width="440" height="470" rx="14" fill="#1e293b"/>
+          <line x1="18" y1="52" x2="422" y2="52" stroke="#334155" stroke-width="1"/>
+          <text x="20" y="34" font-family="Segoe UI, sans-serif" font-size="20">📧</text>
+          <text x="50" y="38" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f1f5f9">Gasto detectado</text>
+          <rect x="358" y="22" width="64" height="18" rx="9" fill="#ea4335"/>
+          <text x="390" y="35" font-family="Segoe UI, sans-serif" font-size="10" font-weight="600" fill="white" text-anchor="middle">MercadoPago</text>
+          <text x="18" y="76" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">MONTO</text>
+          <rect x="18" y="82" width="192" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="104" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">9500.00</text>
+          <text x="228" y="76" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">MONEDA</text>
+          <rect x="228" y="82" width="194" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="240" y="104" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">$ ARS ▾</text>
+          <text x="18" y="136" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">COMERCIO / DETALLE</text>
+          <rect x="18" y="142" width="404" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="164" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">Carlos Alfredo Irrera</text>
+          <text x="18" y="192" font-family="Segoe UI, sans-serif" font-size="11" fill="#64748b">Transferencia terminada en</text>
+          <text x="18" y="216" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">FECHA</text>
+          <rect x="18" y="222" width="192" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="244" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">01/07/2026</text>
+          <text x="228" y="216" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">CUOTAS</text>
+          <rect x="228" y="222" width="194" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="240" y="244" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">1</text>
+          <text x="18" y="276" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">RUBRO</text>
+          <rect x="18" y="282" width="404" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="304" font-family="Segoe UI, sans-serif" font-size="14" fill="#f1f5f9">Sodero  ▾  (preseleccionado)</text>
+          <text x="18" y="336" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#94a3b8">MEDIO DE PAGO</text>
+          <rect x="18" y="342" width="404" height="34" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="30" y="364" font-family="Segoe UI, sans-serif" font-size="14" fill="#64748b">— Seleccioná tarjeta —  ▾</text>
+          <rect x="18" y="392" width="196" height="40" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+          <text x="116" y="417" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#f1f5f9" text-anchor="middle">✕ Cancelar</text>
+          <rect x="226" y="392" width="196" height="40" rx="10" fill="#4f46e5"/>
+          <text x="324" y="417" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="white" text-anchor="middle">✓ Registrar gasto</text>
+        </svg>
+      </div>
     </div>
+
+    <h2>Transferencias de MercadoPago a personas</h2>
+    <p>Además de las compras con tarjeta, el módulo detecta los mails "Ya enviamos tu transferencia..." de MercadoPago (transferencias a beneficiarios). Estos se registran como gasto corriente con el rubro <strong>preseleccionado automáticamente</strong> según una tabla interna que asocia cada nombre de beneficiario a un rubro fijo — solo hay que confirmar el modal.</p>
+    <div class="note">📌 Tabla actual de nombre → rubro: Carlos Alfredo Irrera → Sodero · Miguel Angel Torres → Jardinero · Edgardo Sebastian Soria → Delivery · Elvira Reina Tito → Carnicería / Verdulería. Para agregar nuevos beneficiarios hay que actualizar la tabla en el código (<code>CF_MP_TRANSFER_RUBROS</code>).</div>
 
     <h2>Comandos útiles (consola del navegador)</h2>
     <pre>// Buscar mails manualmente
 cfGmailChequear()
 
 // Resetear historial y buscar todos los mails de 30 días
-localStorage.removeItem('cf_gmail_processed'); cfGmailChequear()</pre>
+// (en DEV la clave lleva el prefijo dev2_)
+localStorage.removeItem('dev2_cf_gmail_processed'); cfGmailChequear()</pre>
 
-    <div class="note">📌 El token de Gmail dura aproximadamente 1 hora. Después de ese tiempo es necesario hacer clic en 📧 Gmail nuevamente para renovarlo.</div>
+    <div class="note">📌 El token de Gmail dura aproximadamente 1 hora, pero la app intenta renovarlo en silencio automáticamente (sin popup) mientras esté abierta, y también al abrirla si venció. Si tu sesión de Google también expiró, vas a ver un cartel abajo a la derecha pidiendo que reautentiques con el botón 📧 Gmail.</div>
   </section>
 
   <!-- CARPETA -->
@@ -841,13 +917,13 @@ localStorage.removeItem('cf_gmail_processed'); cfGmailChequear()</pre>
         <div class="section-subtitle">Backup en la nube con Google</div>
       </div>
     </div>
-    <p>La app puede sincronizar automáticamente con Google Drive usando la cuenta Google configurada.</p>
+    <p>⚠️ <strong>En esta versión de desarrollo, la sincronización con Drive está deshabilitada</strong> a propósito, para no mezclar backups con el archivo de producción (mismo proyecto de Google Cloud, misma carpeta oculta de Drive). El login con Google se sigue usando para el módulo Gmail, pero no sube nada a Drive.</p>
 
     <h2>Login con Google</h2>
-    <p>Al hacer login (mediante el módulo Gmail o el botón ☁️ Drive), la app obtiene acceso a Drive y Gmail con los permisos necesarios.</p>
+    <p>Al hacer login (mediante el botón 📧 Gmail), la app obtiene acceso a Gmail para leer mails de gastos. El acceso a Drive queda sin usar.</p>
 
-    <h2>Sync automático</h2>
-    <p>La app sincroniza automáticamente a Drive cuando detecta cambios pendientes, y también al cerrar la app con el botón Salir.</p>
+    <h2>Sync automático — deshabilitado</h2>
+    <p>A diferencia de producción, acá la función de sync a Drive está desactivada en el código (<code>syncSilencioso()</code> no hace nada). El botón 🚪 Salir hace snapshot local y backup en carpeta, pero la línea de Drive del cartel siempre figura como deshabilitada.</p>
 
     <h2>Restaurar desde Drive</h2>
     <p>El botón 📂 Drive (bajar) lista los backups disponibles en Drive y permite seleccionar uno para restaurar.</p>
@@ -879,11 +955,11 @@ localStorage.removeItem('cf_gmail_processed'); cfGmailChequear()</pre>
     </div>
 
     <h2>Gmail</h2>
-    <pre>// Buscar mails nuevos de Santander
+    <pre>// Buscar mails nuevos de Santander y MercadoPago
 cfGmailChequear()
 
-// Resetear procesados y buscar todos
-localStorage.removeItem('cf_gmail_processed'); cfGmailChequear()
+// Resetear procesados y buscar todos (clave con prefijo dev2_)
+localStorage.removeItem('dev2_cf_gmail_processed'); cfGmailChequear()
 
 // Ver mails en cola
 console.log(JSON.stringify(cfGmailQueue.map(g=>({comercio:g.comercio,monto:g.monto}))))
