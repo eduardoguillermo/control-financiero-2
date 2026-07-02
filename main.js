@@ -1,16 +1,19 @@
 // ═══════════════════════════════════════════
 //  ESTADO GLOBAL
 // ═══════════════════════════════════════════
+// Namespace de storage exclusivo de DEV — evita compartir localStorage/IndexedDB con producción
+// (mismo origen eduardoguillermo.github.io, distinta ruta: el navegador comparte storage por origen)
+const CF_NS = 'dev2_';
 const K = {
-    rubros:'f_r_v2_2', bancos:'f_bancos_v2_4', tarjetas:'f_tarjetas_v2_4',
-    servicios:'f_servicios_v2_4', corrientes:'f_corrientes_v2_4',
-    transferencias:'f_transferencias_v3', cuotas:'f_cuotas_v3', historico:'f_historico_v3',
-    cuentasUSD:'f_cuentasUSD_v3', tarjetasUSD:'f_tarjetasUSD_v3',
-    serviciosUSD:'f_serviciosUSD_v3', corrientesUSD:'f_corrientesUSD_v3',
-    tipoCambio:'f_tipoCambio_v3',
-    instrumentos:'f_instrumentos_v1',
-    acciones:'f_acciones_v1',
-    ingresos:'f_ingresos_v1'
+    rubros:CF_NS+'f_r_v2_2', bancos:CF_NS+'f_bancos_v2_4', tarjetas:CF_NS+'f_tarjetas_v2_4',
+    servicios:CF_NS+'f_servicios_v2_4', corrientes:CF_NS+'f_corrientes_v2_4',
+    transferencias:CF_NS+'f_transferencias_v3', cuotas:CF_NS+'f_cuotas_v3', historico:CF_NS+'f_historico_v3',
+    cuentasUSD:CF_NS+'f_cuentasUSD_v3', tarjetasUSD:CF_NS+'f_tarjetasUSD_v3',
+    serviciosUSD:CF_NS+'f_serviciosUSD_v3', corrientesUSD:CF_NS+'f_corrientesUSD_v3',
+    tipoCambio:CF_NS+'f_tipoCambio_v3',
+    instrumentos:CF_NS+'f_instrumentos_v1',
+    acciones:CF_NS+'f_acciones_v1',
+    ingresos:CF_NS+'f_ingresos_v1'
 };
 let listaRubros        = leer(K.rubros)        || ["Carnicería / Verdulería","Supermercado / Almacén","Gastos Auto / Combustible"];
 let listaBancos        = leer(K.bancos)        || [];
@@ -28,9 +31,9 @@ let tipoCambio         = leer(K.tipoCambio)    || 1200;
 let listaInstrumentos  = leer(K.instrumentos)  || [];
 let listaAcciones      = leer(K.acciones)      || [];
 let listaIngresos      = leer(K.ingresos)      || [];
-let listaPresupRubros    = leer('f_presup_rubros_v1')    || {};
-let listaPresupRubrosUSD = leer('f_presup_rubros_usd_v1') || {};
-let listaRubrosUSD       = leer('f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
+let listaPresupRubros    = leer(CF_NS+'f_presup_rubros_v1')    || {};
+let listaPresupRubrosUSD = leer(CF_NS+'f_presup_rubros_usd_v1') || {};
+let listaRubrosUSD       = leer(CF_NS+'f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
 let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
@@ -39,11 +42,62 @@ let _syncPendiente = false;
 
 // ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
 async function syncSilencioso() { return; }
-async function syncAlSalir() { return; }
+async function syncAlSalir() {
+    // 1) Snapshot local — siempre
+    let snapOk = false;
+    try { cfHacerSnapshot(true); snapOk = true; } catch(e) { console.warn('Snapshot:', e); }
+
+    // 2) Backup en carpeta local — solo si está vinculada
+    let carpetaEstado = null; // null = no vinculada
+    if (window._cfFolderHandle) {
+        try {
+            const permOk = await cfVerificarPermiso(window._cfFolderHandle);
+            if (permOk) { await cfBackupEnCarpeta(window._cfFolderHandle); carpetaEstado = true; }
+            else carpetaEstado = false;
+        } catch(e) { carpetaEstado = false; }
+    }
+
+    // 3) Drive — deshabilitado a propósito en desarrollo, para no mezclar con el backup de producción
+    const driveLinea = '➖ Drive: deshabilitado en desarrollo (por diseño)';
+
+    const lineas = [
+        '📦 Backup al salir (DEV)',
+        '',
+        (snapOk ? '✅' : '❌') + ' Snapshot local: ' + (snapOk ? 'guardado' : 'error'),
+        (carpetaEstado === null ? '➖ Carpeta local: no vinculada' : (carpetaEstado ? '✅ Carpeta local: guardado' : '❌ Carpeta local: error')),
+        driveLinea
+    ];
+    alert(lineas.join('\n'));
+    window.close();
+}
 let _syncActivo = false;
 
+// Menú del botón único de Drive (Subir / Restaurar)
+function cfToggleDriveMenu() {
+    const existente = document.getElementById('drive-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('sync-badge');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='drive-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-190)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:190px;';
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+    m.appendChild(mkOpt('☁️ Subir backup ahora', driveSubir, false));
+    m.appendChild(mkOpt('📂 Restaurar backup...', driveRestaurar, true));
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
-const CF_BKUP_KEY = 'cf_backups';
+const CF_BKUP_KEY = CF_NS+'cf_backups';
 const CF_BKUP_MAX = 10;
 
 function cfCargarSnapshots() {
@@ -172,9 +226,9 @@ function guardar() {
         localStorage.setItem(K.tipoCambio,     JSON.stringify(tipoCambio));
         localStorage.setItem(K.instrumentos,   JSON.stringify(listaInstrumentos));
         localStorage.setItem(K.acciones,       JSON.stringify(listaAcciones));
-        localStorage.setItem('f_presup_rubros_v1',     JSON.stringify(listaPresupRubros));
-        localStorage.setItem('f_presup_rubros_usd_v1', JSON.stringify(listaPresupRubrosUSD));
-        localStorage.setItem('f_rubros_usd_v1',         JSON.stringify(listaRubrosUSD));
+        localStorage.setItem(CF_NS+'f_presup_rubros_v1',     JSON.stringify(listaPresupRubros));
+        localStorage.setItem(CF_NS+'f_presup_rubros_usd_v1', JSON.stringify(listaPresupRubrosUSD));
+        localStorage.setItem(CF_NS+'f_rubros_usd_v1',         JSON.stringify(listaRubrosUSD));
         localStorage.setItem(K.ingresos,       JSON.stringify(listaIngresos));
         syncDebounce();
     } catch(e) {
@@ -190,6 +244,7 @@ function guardar() {
 //  FORMATO
 // ═══════════════════════════════════════════
 function fmt(n) { return '$ ' + Math.round(n).toLocaleString('es-AR',{maximumFractionDigits:0}); }
+function cfFechaLocal(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function fmtN(n)   { return Math.round(n).toLocaleString('es-AR',{maximumFractionDigits:0}); }
 function fmtUSD(n) { return 'USD ' + (Math.round(n*100)/100).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmt(n) { return '$ '   + Math.round(n).toLocaleString('es-AR',{maximumFractionDigits:0}); }
@@ -211,11 +266,12 @@ function parseNum(str) {
 function syncSetBadge(estado) {
     const b = document.getElementById('sync-badge');
     if(!b) return;
-    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#15803d;cursor:default;'; }
-    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fef9c3;color:#854d0e;cursor:default;'; }
-    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dbeafe;color:#1d4ed8;cursor:default;'; }
-    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fee2e2;color:#b91c1c;cursor:default;'; }
-    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;'; }
+    const base='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;cursor:pointer;border:none;';
+    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText=base+'background:#dcfce7;color:#15803d;'; }
+    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText=base+'background:#fef9c3;color:#854d0e;'; }
+    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText=base+'background:#dbeafe;color:#1d4ed8;'; }
+    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText=base+'background:#fee2e2;color:#b91c1c;'; }
+    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText=base+'background:#f1f5f9;color:#64748b;'; }
 }
 function syncDebounce() {
     if(!gToken) gTokenCargarLocal();
@@ -238,7 +294,7 @@ let _driveFileId = null;
 // ═══════════════════════════════════════════════════════════════
 //  CARPETA LOCAL — File System Access API + IndexedDB
 // ═══════════════════════════════════════════════════════════════
-const CF_FOLDER_DB    = 'cf-folder-db';
+const CF_FOLDER_DB    = CF_NS+'cf-folder-db';
 const CF_FOLDER_STORE = 'handles';
 const CF_FOLDER_KEY   = 'carpeta';
 const CF_MAX_BK       = 7;
@@ -310,7 +366,7 @@ async function cfBackupEnCarpeta(handle) {
     const ok = await cfVerificarPermiso(handle);
     if (!ok) return;
     try {
-        const fecha  = new Date().toISOString().slice(0, 10);
+        const fecha  = cfFechaLocal();
         const nombre = 'cf_backup_' + fecha + '.json';
         const data   = {listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,
                         listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,
@@ -388,23 +444,14 @@ function renderTabs() {
     mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
-    // Badge sync + botón Salir — siempre visible en la tab bar
+    // Botón único de Drive (fusiona badge de estado + subir + restaurar) — botón Salir queda aparte, sin tocar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
-    const badgeEl = document.createElement('span'); badgeEl.id='sync-badge';
-    badgeEl.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;align-self:center;white-space:nowrap;';
-    badgeEl.innerText='☁️ Drive'; badgeEl.onclick=syncAlSalir;
-    bar.appendChild(badgeEl);
-    const backupEl = document.createElement('button'); backupEl.id='btn-backup-global';
-    backupEl.style.cssText='background:#4285f4;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:6px;align-self:center;white-space:nowrap;';
-    backupEl.innerText='☁️ BK'; backupEl.title='Subir backup ahora';
-    backupEl.onclick=driveSubir;
-    bar.appendChild(backupEl);
-    const restoreEl = document.createElement('button'); restoreEl.id='btn-restore-global';
-    restoreEl.style.cssText='background:#4285f4;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    restoreEl.innerText='📂 BK'; restoreEl.title='Restaurar backup';
-    restoreEl.onclick=driveRestaurar;
-    bar.appendChild(restoreEl);
+    const driveEl = document.createElement('button'); driveEl.id='sync-badge';
+    driveEl.style.cssText='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;border:none;align-self:center;white-space:nowrap;';
+    driveEl.innerText='☁️ Drive'; driveEl.title='Backup a Google Drive';
+    driveEl.onclick=(e)=>{ e.stopPropagation(); cfToggleDriveMenu(); };
+    bar.appendChild(driveEl);
     const gmailEl = document.createElement('button'); gmailEl.id='btn-gmail-santander';
     gmailEl.style.cssText='background:#ea4335;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;' + (cfEsMovil() ? 'display:none;' : '');
     gmailEl.innerText='📧 Gmail'; gmailEl.title='Leer mails de Santander';
@@ -865,7 +912,10 @@ function render() {
         tdPag.appendChild(inpPag);
         const tr=el('tr');
         const tdNom=el('td'); tdNom.style.maxWidth='0'; tdNom.style.overflow='hidden'; tdNom.style.textOverflow='ellipsis'; tdNom.style.whiteSpace='nowrap';
-        const nomSpan2=el('span'); nomSpan2.style.fontWeight='bold'; nomSpan2.innerText=s.nombre;
+        const nomSpan2=el('input'); nomSpan2.type='text'; nomSpan2.value=s.nombre; nomSpan2.style.cssText='font-weight:bold;border:none;background:transparent;width:100%;padding:2px 0;color:inherit;font-size:inherit;';
+        nomSpan2.onchange=e=>{ const v=e.target.value.trim(); if(v){ s.nombre=v; guardar(); } else { e.target.value=s.nombre; } };
+        nomSpan2.onfocus=e=>{ e.target.style.background='#0f172a'; e.target.style.borderBottom='1px solid #4f46e5'; };
+        nomSpan2.onblur=e=>{ e.target.style.background='transparent'; e.target.style.borderBottom='none'; };
         const notaEdit=el('input'); notaEdit.type='text'; notaEdit.className='inp'; notaEdit.style.cssText='margin-top:3px;font-size:11px;color:#854d0e;background:#fefce8;border-color:#fde68a;display:'+(s.nota||document.activeElement===notaEdit?'block':'none')+';';
         notaEdit.placeholder='Nota...'; notaEdit.value=s.nota||'';
         notaEdit.onchange=e=>{ s.nota=e.target.value.trim(); guardar(); };
@@ -1127,7 +1177,7 @@ function abrirModalIngreso() {
     listaBancos.forEach(b => { const o=document.createElement('option'); o.value=b.id; o.textContent='🏦 '+b.nombre; sel.appendChild(o); });
     document.getElementById('ing-monto').value = '';
     document.getElementById('ing-desc').value = '';
-    document.getElementById('ing-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('ing-fecha').value = cfFechaLocal();
     const m = document.getElementById('modal-ingreso');
     m.style.display = 'flex';
 }
@@ -1138,7 +1188,7 @@ function confirmarIngreso() {
     const bancoId = document.getElementById('ing-cuenta').value;
     const monto = parseFloat(document.getElementById('ing-monto').value)||0;
     const desc = document.getElementById('ing-desc').value.trim()||'Sin descripción';
-    const fecha = document.getElementById('ing-fecha').value||new Date().toISOString().slice(0,10);
+    const fecha = document.getElementById('ing-fecha').value||cfFechaLocal();
     if(!bancoId){ alert('Seleccioná una cuenta.'); return; }
     if(monto<=0){ alert('Ingresá un monto mayor a cero.'); return; }
     const banco = listaBancos.find(b=>b.id===bancoId);
@@ -1323,7 +1373,7 @@ function cargarDatos(res) {
     if(res.listaPresupRubrosUSD) listaPresupRubrosUSD = res.listaPresupRubrosUSD;
     if(res.listaRubrosUSD)       listaRubrosUSD       = res.listaRubrosUSD;
     if(res.listaIngresos)        listaIngresos        = res.listaIngresos;
-    if(res.groqKey)            localStorage.setItem('groq_api_key', res.groqKey);
+    if(res.groqKey)            localStorage.setItem(CF_NS+'groq_api_key', res.groqKey);
 }
 function importar(event) {
     const file=event.target.files[0]; if(!file) return;
@@ -1947,7 +1997,7 @@ function buildReportes() {
 
     // Bancos
     let totB=0; listaBancos.forEach(b=>totB+=b.saldo);
-    let cB=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #0284c7;padding:16px;margin-bottom:0px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">🏦 Cuentas Bancarias</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Cuenta</th><th style="padding:6px;text-align:right;">Saldo Disponible</th></tr>`;
+    let cB=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #0284c7;padding:16px;margin-bottom:0px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">🏦 Cuentas Bancarias</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Cuenta</th><th style="padding:6px;text-align:right;">Saldo Disponible</th></tr>`;
     listaBancos.forEach(b=>{ cB+=`<tr><td style="padding:5px 6px;font-weight:bold;">${b.nombre}</td><td style="padding:5px 6px;text-align:right;color:#0284c7;font-weight:bold;">${fmt(b.saldo)}</td></tr>`; });
     cB+=`<tr style="background:#f8fafc;font-weight:bold;"><td style="padding:6px;">TOTAL</td><td style="padding:6px;text-align:right;color:#0284c7;">${fmt(totB)}</td></tr></table></div>`;
 
@@ -1956,7 +2006,7 @@ function buildReportes() {
     listaServicios.forEach(s=>{ if(s.pagado>0&&mDeb[s.medioPagoId]!==undefined) mDeb[s.medioPagoId]+=s.pagado; });
     listaCorrientes.forEach(c=>{ if(c.fechaPago&&mDeb[c.medioPagoId]!==undefined) mDeb[c.medioPagoId]+=c.monto*(c.esIngreso?-1:1); });
     let totT=0;
-    let cT=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">💳 Tarjetas de Crédito</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Tarjeta</th><th style="padding:6px;text-align:right;">Saldo base</th><th style="padding:6px;text-align:right;">Consumo mes</th><th style="padding:6px;text-align:right;">Total deuda</th></tr>`;
+    let cT=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">💳 Tarjetas de Crédito</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Tarjeta</th><th style="padding:6px;text-align:right;">Saldo base</th><th style="padding:6px;text-align:right;">Consumo mes</th><th style="padding:6px;text-align:right;">Total deuda</th></tr>`;
     listaTarjetas.forEach(t=>{ const c=mDeb[t.id]||0,tot=t.saldo+c; totT+=tot; cT+=`<tr><td style="padding:5px 6px;font-weight:bold;">${t.nombre}</td><td style="padding:5px 6px;text-align:right;">${fmt(t.saldo)}</td><td style="padding:5px 6px;text-align:right;color:#a855f7;">${fmt(c)}</td><td style="padding:5px 6px;text-align:right;font-weight:bold;color:#a855f7;">${fmt(tot)}</td></tr>`; });
     cT+=`<tr style="background:#f8fafc;font-weight:bold;"><td colspan="3" style="padding:6px;">TOTAL DEUDA</td><td style="padding:6px;text-align:right;color:#a855f7;">${fmt(totT)}</td></tr></table></div>`;
 
@@ -1966,7 +2016,7 @@ function buildReportes() {
     // Servicios fijos
     let totPres=0,totPag=0,totPend=0;
     listaServicios.forEach(s=>{ totPres+=s.presupuesto; totPag+=s.pagado; if(s.presupuesto>s.pagado) totPend+=(s.presupuesto-s.pagado); });
-    let tSrv=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #4f46e5;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📋 Servicios Fijos del Mes</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Servicio</th><th style="padding:6px;text-align:center;">Clase</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pendiente</th><th style="padding:6px;text-align:center;">Estado</th></tr>`;
+    let tSrv=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #4f46e5;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📋 Servicios Fijos del Mes</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Servicio</th><th style="padding:6px;text-align:center;">Clase</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pendiente</th><th style="padding:6px;text-align:center;">Estado</th></tr>`;
     listaServicios.forEach((s,ri)=>{
         const pend=Math.max(0,s.presupuesto-s.pagado), cc={'M':'#0284c7','O':'#a855f7','X':'#64748b'}[s.clase||'M'];
         let ec='#c5221f',eb='#fce8e6',et='PENDIENTE'; if(s.pagado>=s.presupuesto&&s.presupuesto>0){ec='#137333';eb='#e6f4ea';et='PAGADO';} else if(s.pagado>0){ec='#b06000';eb='#fef7e0';et='PARCIAL';}
@@ -1977,7 +2027,7 @@ function buildReportes() {
 
     // Por clase
     const clases=[{k:'M',label:'M — Mío',color:'#0284c7'},{k:'O',label:'O — Oma',color:'#a855f7'},{k:'X',label:'X — Otros',color:'#64748b'}];
-    let tCl=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #6366f1;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📊 Servicios Fijos por Clase</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Clase</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pendiente</th><th style="padding:6px;text-align:right;">%</th></tr>`;
+    let tCl=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #6366f1;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📊 Servicios Fijos por Clase</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Clase</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pendiente</th><th style="padding:6px;text-align:right;">%</th></tr>`;
     clases.forEach(cl=>{ const sc=listaServicios.filter(s=>(s.clase||'M')===cl.k); const p=sc.reduce((a,s)=>a+s.presupuesto,0),pg=sc.reduce((a,s)=>a+s.pagado,0),pe=sc.reduce((a,s)=>a+Math.max(0,s.presupuesto-s.pagado),0),pct=totPres>0?((p/totPres)*100).toFixed(1):'0.0';
         tCl+=`<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 6px;"><span style="font-weight:bold;padding:2px 8px;border-radius:4px;background:${cl.color}22;color:${cl.color};">${cl.label}</span></td><td style="padding:5px 6px;text-align:right;font-weight:bold;">${fmt(p)}</td><td style="padding:5px 6px;text-align:right;color:#10b981;">${fmt(pg)}</td><td style="padding:5px 6px;text-align:right;color:#ef4444;">${fmt(pe)}</td><td style="padding:5px 6px;text-align:right;">${pct}%</td></tr>`; });
     tCl+=`<tr style="background:#f8fafc;font-weight:bold;"><td>TOTAL</td><td style="text-align:right;">${fmt(totPres)}</td><td style="text-align:right;color:#10b981;">${fmt(totPag)}</td><td style="text-align:right;color:#ef4444;">${fmt(totPend)}</td><td></td></tr></table></div>`;
@@ -2000,7 +2050,7 @@ function buildReportes() {
         if(!porRConClase[c.rubro]) porRConClase[c.rubro]={monto:0,clase:c.clase||'M'};
         porRConClase[c.rubro].monto+=c.monto;
     });
-    let tCorr=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #10b981;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">🛍️ Gastos Corrientes por Rubro</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:center;">Clase</th><th style="padding:6px;text-align:left;">Rubro</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Sin confirmar</th><th style="padding:6px;text-align:right;">% del total</th></tr>`;
+    let tCorr=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #10b981;padding:16px;margin-bottom:16px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">🛍️ Gastos Corrientes por Rubro</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:center;">Clase</th><th style="padding:6px;text-align:left;">Rubro</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Sin confirmar</th><th style="padding:6px;text-align:right;">% del total</th></tr>`;
     [...todosR].sort().forEach(r=>{
         const pg=porR[r]||0,sf=porRSF[r]||0,pct=totCorr>0?((pg/totCorr)*100).toFixed(1):'0.0',col=colorRubro(r);
         const clase=(porRConClase[r]&&porRConClase[r].clase)||'M';
@@ -2017,7 +2067,7 @@ function buildReportes() {
 
     // Subtotales corrientes por clase
     const clases3=['M','O','X'], claseLabels={'M':'M — Mío','O':'O — Oma','X':'X — Otros'};
-    let tClaseCorr=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #10b981;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📊 Gastos Corrientes por Clase</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Clase</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">% del total</th></tr>`;
+    let tClaseCorr=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #10b981;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📊 Gastos Corrientes por Clase</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Clase</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">% del total</th></tr>`;
     clases3.forEach(function(cl){
         const total=listaCorrientes.filter(c=>c.fechaPago&&(c.clase||'M')===cl&&!esPagoTarjeta(c.rubro)).reduce((a,c)=>a+c.monto,0);
         const pct=totCorr>0?((total/totCorr)*100).toFixed(1):'0.0';
@@ -2051,10 +2101,10 @@ function buildReportes() {
         const mDU2=calcMDU(), tc=tipoCambio;
         const tD=listaCuentasUSD.reduce((a,c)=>a+c.saldo,0), tTU=listaTarjetasUSD.reduce((a,t)=>a+(t.saldo+(mDU2[t.id]||0)),0), bal=tD-tTU;
         const gU=el('div'); gU.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;';
-        gU.innerHTML=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid #16a34a;padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD Disponibles</h4><p style="margin:0;font-size:20px;font-weight:bold;color:#16a34a;">${fmtUSD(tD)}</p><small style="color:#64748b;">${fmt(tD*tc)}</small></div><div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid #a855f7;padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD a Pagar</h4><p style="margin:0;font-size:20px;font-weight:bold;color:#a855f7;">${fmtUSD(tTU)}</p><small style="color:#64748b;">${fmt(tTU*tc)}</small></div><div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid ${bal>=0?'#16a34a':'#ef4444'};padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">Balance USD</h4><p style="margin:0;font-size:20px;font-weight:bold;color:${bal>=0?'#16a34a':'#ef4444'};">${fmtUSD(bal)}</p><small style="color:#64748b;">${fmt(Math.abs(bal)*tc)}</small></div><div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid ${bal<0?'#ef4444':'#94a3b8'};padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD a Comprar</h4><p style="margin:0;font-size:20px;font-weight:bold;color:${bal<0?'#ef4444':'#94a3b8'};">${bal<0?fmtUSD(Math.abs(bal)):'—'}</p><small style="color:#64748b;">${bal<0?fmt(Math.abs(bal)*tc):''}</small></div>`;
+        gU.innerHTML=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid #16a34a;padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD Disponibles</h4><p style="margin:0;font-size:20px;font-weight:bold;color:#16a34a;">${fmtUSD(tD)}</p><small style="color:#64748b;">${fmt(tD*tc)}</small></div><div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid #a855f7;padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD a Pagar</h4><p style="margin:0;font-size:20px;font-weight:bold;color:#a855f7;">${fmtUSD(tTU)}</p><small style="color:#64748b;">${fmt(tTU*tc)}</small></div><div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid ${bal>=0?'#16a34a':'#ef4444'};padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">Balance USD</h4><p style="margin:0;font-size:20px;font-weight:bold;color:${bal>=0?'#16a34a':'#ef4444'};">${fmtUSD(bal)}</p><small style="color:#64748b;">${fmt(Math.abs(bal)*tc)}</small></div><div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-left:5px solid ${bal<0?'#ef4444':'#94a3b8'};padding:16px;"><h4 style="margin:0 0 8px;font-size:11px;color:#64748b;text-transform:uppercase;">USD a Comprar</h4><p style="margin:0;font-size:20px;font-weight:bold;color:${bal<0?'#ef4444':'#94a3b8'};">${bal<0?fmtUSD(Math.abs(bal)):'—'}</p><small style="color:#64748b;">${bal<0?fmt(Math.abs(bal)*tc):''}</small></div>`;
         wrap.appendChild(gU);
         if(listaServiciosUSD.length>0){
-            let tSU=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #4f46e5;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📋 Servicios Fijos en USD · TC ${fmt(tc)}</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Servicio</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pend. (USD)</th><th style="padding:6px;text-align:right;">Pend. (ARS)</th><th style="padding:6px;text-align:center;">Estado</th></tr>`;
+            let tSU=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #4f46e5;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">📋 Servicios Fijos en USD · TC ${fmt(tc)}</h4><table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Servicio</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:right;">Pend. (USD)</th><th style="padding:6px;text-align:right;">Pend. (ARS)</th><th style="padding:6px;text-align:center;">Estado</th></tr>`;
             let tpU=0,pgU=0,peU=0;
             listaServiciosUSD.forEach((s,ri)=>{ const pe=Math.max(0,s.presupuesto-s.pagado); tpU+=s.presupuesto; pgU+=s.pagado; peU+=pe; let ec='#c5221f',eb='#fce8e6',et='PENDIENTE'; if(s.pagado>=s.presupuesto&&s.presupuesto>0){ec='#137333';eb='#e6f4ea';et='PAGADO';} else if(s.pagado>0){ec='#b06000';eb='#fef7e0';et='PARCIAL';}
                 tSU+=`<tr style="background:${ri%2===0?'white':'#f8fafc'};border-bottom:1px solid #f1f5f9;"><td style="padding:5px 6px;font-weight:bold;">${s.nombre}</td><td style="padding:5px 6px;text-align:right;">${fmtUSD(s.presupuesto)}</td><td style="padding:5px 6px;text-align:right;color:#10b981;">${fmtUSD(s.pagado)}</td><td style="padding:5px 6px;text-align:right;color:#ef4444;">${fmtUSD(pe)}</td><td style="padding:5px 6px;text-align:right;color:#64748b;">${fmt(pe*tc)}</td><td style="padding:5px 6px;text-align:center;"><span style="font-size:10px;font-weight:bold;padding:2px 6px;border-radius:4px;background:${eb};color:${ec};">${et}</span></td></tr>`; });
@@ -2081,7 +2131,7 @@ function buildReportes() {
             }
         }
 
-    } else { wrap.insertAdjacentHTML('beforeend','<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Sin datos en dólares para este mes.</div>'); }
+    } else { wrap.insertAdjacentHTML('beforeend','<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Sin datos en dólares para este mes.</div>'); }
 
     // ── REPORTE 2: ACUMULADO 12 MESES ─────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#f59e0b;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 2 · Análisis por Rubro · Últimos 12 Meses</h3>');
@@ -2106,8 +2156,8 @@ function buildReportes() {
     const contR2=el('div'); wrap.appendChild(contR2);
     const renderTablaR2=()=>{
         const rubFilt=filtroR2?[filtroR2]:rubrosArr;
-        if(!rubFilt.length){ contR2.innerHTML='<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;">Sin datos.</div>'; return; }
-        let t2=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #f59e0b;padding:16px;margin-bottom:16px;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px;"><thead><tr style="background:#1e293b;"><th style="padding:7px 8px;text-align:left;color:white;">Rubro</th>`;
+        if(!rubFilt.length){ contR2.innerHTML='<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;">Sin datos.</div>'; return; }
+        let t2=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #f59e0b;padding:16px;margin-bottom:16px;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px;"><thead><tr style="background:#1e293b;"><th style="padding:7px 8px;text-align:left;color:white;">Rubro</th>`;
         mesesData.forEach(m=>{ t2+=`<th style="padding:7px 8px;text-align:right;color:white;">${m.nombre.replace(' de ',' ')}</th>`; });
         t2+=`<th style="padding:7px 8px;text-align:right;color:#f59e0b;">TOTAL</th></tr></thead><tbody>`;
         const totMes=new Array(mesesData.length).fill(0); let totGen=0;
@@ -2132,7 +2182,7 @@ function buildReportes() {
         // Participación
         const topR=rubFilt.map(r=>({rubro:r,total:mesesData.reduce((a,m)=>a+(m.datos.listaCorrientes||[]).filter(c=>c.fechaPago&&c.rubro===r&&!(c.rubro&&c.rubro.toLowerCase().includes('tarjeta'))).reduce((b,c)=>b+c.monto,0)+(m.datos.listaServicios||[]).filter(sv=>sv.rubro===r).reduce((b,sv)=>b+sv.presupuesto,0),0)})).sort((a,b)=>b.total-a.total);
         const totAc=topR.reduce((a,r)=>a+r.total,0);
-        let res=`<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">Participación por Rubro (acumulado)</h4>`;
+        let res=`<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;padding:16px;margin-bottom:24px;"><h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">Participación por Rubro (acumulado)</h4>`;
         topR.forEach(r=>{ const pct=totAc>0?(r.total/totAc*100).toFixed(1):0; res+=`<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="font-weight:bold;color:#334155;">${r.rubro}</span><span style="color:#64748b;">${fmt(r.total)} · ${pct}%</span></div><div style="background:#e2e8f0;border-radius:4px;height:10px;"><div style="background:linear-gradient(90deg,#f59e0b,#f97316);height:10px;border-radius:4px;width:${Math.round(pct)}%;"></div></div></div>`; });
         res+=`<div style="font-size:12px;color:#64748b;text-align:right;margin-top:8px;font-weight:bold;">Total acumulado: ${fmt(totAc)}</div></div>`;
         contR2.innerHTML=t2+res;
@@ -2165,7 +2215,7 @@ function buildReportes() {
 
     // Tabla fijos
     if(srvO.length){
-        rO += '<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;margin-bottom:16px;">';
+        rO += '<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;margin-bottom:16px;">';
         rO += '<h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">Servicios Fijos — Clase O</h4>';
         rO += '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Servicio</th><th style="padding:6px;text-align:center;">F. Pago</th><th style="padding:6px;text-align:right;">Presup.</th><th style="padding:6px;text-align:right;">Pagado</th><th style="padding:6px;text-align:center;">Estado</th></tr>';
         srvO.forEach((s,ri)=>{
@@ -2182,7 +2232,7 @@ function buildReportes() {
 
     // Tabla corrientes
     if(corrO.length){
-        rO += '<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;margin-bottom:24px;">';
+        rO += '<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #a855f7;padding:16px;margin-bottom:24px;">';
         rO += '<h4 style="margin:0 0 12px;font-size:12px;color:#64748b;text-transform:uppercase;">Gastos Corrientes — Clase O</h4>';
         rO += '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:#f8fafc;"><th style="padding:6px;text-align:left;">Rubro</th><th style="padding:6px;text-align:left;">Detalle</th><th style="padding:6px;text-align:center;">F. Pago</th><th style="padding:6px;text-align:right;">Monto</th></tr>';
         corrO.forEach((c,ri)=>{
@@ -2194,7 +2244,7 @@ function buildReportes() {
     }
 
     if(!srvO.length && !corrO.length){
-        rO += '<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Sin datos de Clase O para este mes.</div>';
+        rO += '<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Sin datos de Clase O para este mes.</div>';
     }
 
     wrap.insertAdjacentHTML('beforeend', rO);
@@ -2696,12 +2746,12 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.34';
+const APP_VERSION = 'v3.7.46-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
-const CF_GMAIL_PROCESSED_KEY = 'cf_gmail_processed';
-const GTOKEN_KEY='cf_gtoken';
-const GTOKEN_EXP_KEY='cf_gtoken_exp';
+const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
+const GTOKEN_KEY=CF_NS+'cf_gtoken';
+const GTOKEN_EXP_KEY=CF_NS+'cf_gtoken_exp';
 let gToken=null;
 let _alertasMostradas=false;
 
@@ -3049,12 +3099,12 @@ async function enviarConsultaAI() {
     _aiHistorial.push({ role: 'user', content: pregunta });
 
     // Verificar API key de Gemini
-    var apiKey = localStorage.getItem('groq_api_key') || '';
+    var apiKey = localStorage.getItem(CF_NS+'groq_api_key') || '';
     if(!apiKey) {
         var k = prompt('Ingres\u00e1 tu API key de Groq (se guarda solo en este dispositivo):');
         if(!k || !k.trim()) { inp.disabled=false; if(btn) btn.disabled=false; return; }
         apiKey = k.trim();
-        localStorage.setItem('groq_api_key', apiKey);
+        localStorage.setItem(CF_NS+'groq_api_key', apiKey);
     }
 
     // Armar historial para Groq (formato OpenAI compatible)
@@ -3081,7 +3131,7 @@ async function enviarConsultaAI() {
         var data = await res.json();
         if(data.error) {
             if(res.status === 401 || res.status === 403) {
-                localStorage.removeItem('groq_api_key');
+                localStorage.removeItem(CF_NS+'groq_api_key');
                 if(typing) typing.innerText = '\u26A0\uFE0F API key inv\u00e1lida. Recargá y volvé a ingresarla.';
             } else {
                 if(typing) typing.innerText = '\u26A0\uFE0F Error: ' + (data.error.message || 'desconocido');
@@ -3147,7 +3197,7 @@ function mostrarInformeSemanal() {
     });
 
     function gastadoHasta(fecha) {
-        const fStr = fecha.toISOString().slice(0,10);
+        const fStr = cfFechaLocal(fecha);
         let total = 0;
         listaCorrientes.filter(function(c){ return c.fechaPago && !c.esIngreso && !(c.rubro && c.rubro.toLowerCase().includes('tarjeta')) && c.fechaPago <= fStr; }).forEach(function(c){ total += c.monto; });
         listaServicios.filter(function(s){ return s.pagado > 0 && (!s.fPago || s.fPago <= fStr); }).forEach(function(s){ total += s.pagado; });
@@ -3731,7 +3781,7 @@ function limpiarCache() {
 //  Detección automática mails Santander
 // ════════════════════════════════════════════════════
 
-const CF_SANTANDER_QUERY = 'subject:(Pagaste OR "débito automático" OR "débito con tu") newer_than:30d';
+const CF_SANTANDER_QUERY = '(subject:(Pagaste OR "débito automático" OR "débito con tu") OR from:info@mercadopago.com) newer_than:30d';
 
 function cfEsMovil() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -3815,6 +3865,54 @@ function cfParsearMailSantander(texto) {
     return resultado;
 }
 
+const CF_MP_TRANSFER_RUBROS = {
+    'carlos alfredo irrera': 'Sodero',
+    'miguel angel torres': 'Jardinero',
+    'edgardo sebastian soria': 'Delivery',
+    'elvira reina tito': 'Carnicería / Verdulería'
+};
+
+function cfNormalizarNombre(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function cfParsearMailMercadoPago(texto) {
+    if (!texto) return null;
+    const esMP = /mercado\s*pago/i.test(texto) && /(pagaste|compraste)/i.test(texto);
+    if (!esMP) return null;
+    const t = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const resultado = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Tarjeta', tipo: 'gasto', origen: 'MercadoPago' };
+    const rComercio = /Le compraste a\s*([^\n]+)/i.exec(t);
+    if (rComercio) resultado.comercio = rComercio[1].trim();
+    const rMonto = /Pagaste\s*\$\s?([\d.,]+)/i.exec(t);
+    if (rMonto) resultado.monto = parseFloat(rMonto[1].replace(/\./g, '').replace(',', '.'));
+    const rCuotas = /(\d+)\s*cuota/i.exec(t);
+    if (rCuotas) resultado.cuotas = parseInt(rCuotas[1]);
+    const rTarjeta = /\*{2,4}\s?(\d{4})/.exec(t);
+    if (rTarjeta) resultado.tarjeta = rTarjeta[1];
+    if (/american express|amex/i.test(t)) resultado.tipo_tarjeta = 'Amex';
+    else if (/visa/i.test(t)) resultado.tipo_tarjeta = 'Visa Crédito';
+    else if (/santander/i.test(t)) resultado.tipo_tarjeta = 'Santander Crédito';
+    resultado.tipo = (resultado.cuotas && resultado.cuotas > 1) ? 'cuota' : 'gasto';
+    return resultado;
+}
+
+function cfParsearMailMercadoPagoTransferencia(texto) {
+    if (!texto) return null;
+    const esTransf = /ya enviamos tu transferencia/i.test(texto);
+    if (!esTransf) return null;
+    const t = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const resultado = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Transferencia', tipo: 'gasto', origen: 'MercadoPago' };
+    const rMonto = /transferencia de\s*\$\s?([\d.,]+)/i.exec(t);
+    if (rMonto) resultado.monto = parseFloat(rMonto[1].replace(/\./g, '').replace(',', '.'));
+    const rNombre = /Nombre y apellido:\s*([^\n]+)/i.exec(t);
+    if (rNombre) resultado.comercio = rNombre[1].trim();
+    const rubro = CF_MP_TRANSFER_RUBROS[cfNormalizarNombre(resultado.comercio)];
+    if (rubro) resultado.rubroSugerido = rubro;
+    resultado.tipo = 'gasto';
+    return resultado;
+}
+
 async function cfGmailBuscarGastos(token) {
     const query = encodeURIComponent(CF_SANTANDER_QUERY);
     const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=10`;
@@ -3829,8 +3927,15 @@ async function cfGmailBuscarGastos(token) {
         const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
             { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
         const texto = cfGmailExtraerTexto(det.payload);
-        const datos = cfParsearMailSantander(texto);
-        if (datos) { datos._gmailId = msg.id; gastos.push(datos); }
+        const datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
+        if (datos) {
+            if (!datos.fecha && det.internalDate) {
+                const d = new Date(parseInt(det.internalDate));
+                datos.fecha = cfFechaLocal(d);
+            }
+            datos._gmailId = msg.id;
+            gastos.push(datos);
+        }
     }
     return gastos;
 }
@@ -3914,19 +4019,57 @@ function cfGmailLoginYChequear() {
     });
 }
 
-async function cfGmailChequear() {
+async function cfGmailChequear(manual = false) {
     if (cfEsMovil()) return;
-    if (!gTokenCargarLocal()) return;
+    if (manual) cfGmailToast('🔄 Revisando mails...');
+    if (!gTokenCargarLocal()) {
+        // Token vencido o ausente: intentar renovar en silencio (sin popup) si hay sesión Google activa
+        const renovado = await new Promise(resolve => {
+            driveGetToken(t => resolve(!!t));
+            setTimeout(() => resolve(false), 8000);
+        });
+        if (!renovado) {
+            console.log('[CF Gmail] Sin token válido y no se pudo renovar en silencio.');
+            cfGmailToast('⚠️ Gmail: sesión vencida. Tocá 📧 Gmail para reautenticar.', true);
+            return;
+        }
+    }
     console.log('[CF Gmail] Chequeando mails Santander...');
     try {
         const gastos = await cfGmailBuscarGastos(gToken);
-        if (!gastos.length) { console.log('[CF Gmail] Sin gastos nuevos.'); return; }
+        if (!gastos.length) {
+            console.log('[CF Gmail] Sin gastos nuevos.');
+            if (manual) cfGmailToast('✅ Sin mails pendientes.');
+            return;
+        }
         console.log(`[CF Gmail] ${gastos.length} gasto(s) nuevo(s).`);
+        if (manual) cfGmailToast(`📬 ${gastos.length} gasto(s) nuevo(s) encontrado(s).`);
         cfGmailQueue = gastos;
         cfGmailIdx   = 0;
-        setTimeout(cfGmailMostrarSiguiente, 5500);
-    } catch(e) { console.error('[CF Gmail] Error:', e.message); }
+        setTimeout(cfGmailMostrarSiguiente, manual ? 800 : 5500);
+    } catch(e) {
+        console.error('[CF Gmail] Error:', e.message);
+        if (manual) cfGmailToast('❌ Error al revisar mails.', true);
+    }
 }
+
+function cfGmailToast(msg, esError = false) {
+    const prev = document.getElementById('cf-gmail-toast');
+    if (prev) prev.remove();
+    const t = document.createElement('div');
+    t.id = 'cf-gmail-toast';
+    t.style.cssText = `position:fixed;bottom:20px;right:20px;background:${esError ? '#dc2626' : '#0f766e'};color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,0.35);`;
+    t.innerText = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), esError ? 5000 : 3500);
+}
+
+// Renovación silenciosa periódica del token (evita que expire mientras la app está abierta)
+setInterval(() => {
+    if (cfEsMovil()) return;
+    if (!gToken) return; // solo renovamos si ya hubo login en esta sesión
+    driveGetToken(() => {});
+}, 50 * 60 * 1000);
 
 function cfAbrirModalPagoServicio(datos, servicio) {
     const prev = document.getElementById('cf-gmail-overlay');
@@ -3936,7 +4079,7 @@ function cfAbrirModalPagoServicio(datos, servicio) {
     overlay.id = 'cf-gmail-overlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
 
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaHoy = cfFechaLocal();
     const montoPago = datos.monto ? datos.monto.toFixed(2) : (servicio.presupuesto || 0).toFixed(2);
 
     overlay.innerHTML = `
@@ -3944,7 +4087,7 @@ function cfAbrirModalPagoServicio(datos, servicio) {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
             <span style="font-size:24px;">🔧</span>
             <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Pago de servicio fijo</h3>
-            <span style="font-size:10px;background:#0f766e;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">Santander</span>
+            <span style="font-size:10px;background:#0f766e;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
         </div>
         <div style="background:#0f172a;border-radius:8px;padding:10px 12px;margin-bottom:14px;border-left:3px solid #0f766e;">
             <div style="font-size:13px;font-weight:700;color:#f1f5f9;">${servicio.nombre}</div>
@@ -4040,10 +4183,10 @@ function cfAbrirModalGasto(datos) {
     // Opciones de rubros según moneda
     const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
     const opsRubros = listaRubrosActual.map(r =>
-        `<option value="${r}">${r}</option>`
+        `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`
     ).join('');
 
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaHoy = cfFechaLocal();
 
     const overlay = document.createElement('div');
     overlay.id = 'cf-gmail-overlay';
@@ -4054,7 +4197,7 @@ function cfAbrirModalGasto(datos) {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
             <span style="font-size:24px;">📧</span>
             <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Gasto detectado</h3>
-            <span style="font-size:10px;background:#ea4335;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">Santander</span>
+            <span style="font-size:10px;background:#ea4335;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
         </div>
         ${(!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:11px;">
