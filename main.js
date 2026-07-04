@@ -96,6 +96,86 @@ function cfToggleDriveMenu() {
     setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
 }
 
+// Menú consolidado "⋯ Más" — reemplaza los botones sueltos de Drive/Gmail/Pendientes/
+// Ayuda/Local/IA/Cache para reducir la cantidad de elementos visibles en el header.
+function cfToggleMenuMas() {
+    const existente = document.getElementById('mas-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='mas-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;right:'+Math.max(4, window.innerWidth-rect.right)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:230px;';
+
+    const mkLabel = (texto) => {
+        const l = document.createElement('div');
+        l.innerText = texto;
+        l.style.cssText = 'padding:8px 14px 4px;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;';
+        return l;
+    };
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+
+    // Estado de Drive calculado al vuelo (mismo criterio que syncSetBadge)
+    let estadoDrive = '⏳ Drive: sin sincronizar';
+    if (!gTokenCargarLocal() && !gToken) estadoDrive = '☁️ Drive: sin conectar';
+    else if (_syncActivo) estadoDrive = '☁️ Drive: sincronizando...';
+    else if (!_syncPendiente) estadoDrive = '✅ Drive: sincronizado';
+    const estadoEl = document.createElement('div');
+    estadoEl.innerText = estadoDrive;
+    estadoEl.style.cssText = 'padding:8px 14px;font-size:11px;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;';
+
+    m.appendChild(mkLabel('Backup y datos'));
+    m.appendChild(estadoEl);
+    m.appendChild(mkOpt('☁️ Subir backup a Drive', driveSubir, false));
+    m.appendChild(mkOpt('📂 Restaurar backup de Drive', driveRestaurar, false));
+    if (!cfEsMovil()) m.appendChild(mkOpt('📧 Gmail: login + chequear', cfGmailLoginYChequear, false));
+    m.appendChild(mkOpt('🔍 Revisar pendientes', cfRevisarPendientes, false));
+    m.appendChild(mkOpt('💾 Snapshots locales', cfMostrarSnapshots, false));
+    m.appendChild(mkOpt('🗑️ Limpiar caché y recargar', limpiarCache, false));
+
+    m.appendChild(mkLabel('Otros'));
+    m.appendChild(mkOpt('❓ Ayuda', () => window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes'), false));
+    m.appendChild(mkOpt('🤖 Consultar con IA', toggleAIPanel, false));
+
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+// Menú "⋯ Más" de la página Mes Actual — agrupa Informe Semanal, Exportar, Importar, PDF y Carpeta
+function cfToggleMenuMasMes() {
+    const existente = document.getElementById('mas-mes-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas-mes');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='mas-mes-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+rect.left+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:220px;';
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+    m.appendChild(mkOpt('📊 Informe Semanal', mostrarInformeSemanal, false));
+    m.appendChild(mkOpt('💾 Exportar', exportar, false));
+    m.appendChild(mkOpt('📥 Importar', () => document.getElementById('input-backup')?.click(), false));
+    m.appendChild(mkOpt('🖨️ PDF', () => window.print(), false));
+    m.appendChild(mkOpt('📂 Carpeta local', cfSeleccionarCarpeta, true));
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-mes-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
 // Menú del botón "📅 Meses cerrados" — lista desplegable en vez de una tab por mes
 function cfToggleMesesMenu() {
     const existente = document.getElementById('meses-menu');
@@ -497,12 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTabs();
     renderContenido();
     cfRestaurarCarpeta();
-    // Módulo Gmail: mostrar botón solo en PC y chequear si hay sesión activa
-    setTimeout(() => {
-        const btnGmail = document.getElementById('btn-gmail-santander');
-        if (btnGmail && !cfEsMovil()) btnGmail.style.display = '';
-        cfGmailChequear();
-    }, 800);
+    // Módulo Gmail: chequear si hay sesión activa (el botón de login vive ahora en el menú "⋯ Más")
+    setTimeout(() => { cfGmailChequear(); }, 800);
 });
 
 // ═══════════════════════════════════════════
@@ -528,41 +604,18 @@ function renderTabs() {
     // Botón único de Drive (fusiona badge de estado + subir + restaurar) — botón Salir queda aparte, sin tocar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
-    const driveEl = document.createElement('button'); driveEl.id='sync-badge';
-    driveEl.style.cssText='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;border:none;align-self:center;white-space:nowrap;';
-    driveEl.innerText='☁️ Drive'; driveEl.title='Backup a Google Drive';
-    driveEl.onclick=(e)=>{ e.stopPropagation(); cfToggleDriveMenu(); };
-    bar.appendChild(driveEl);
-    const gmailEl = document.createElement('button'); gmailEl.id='btn-gmail-santander';
-    gmailEl.style.cssText='background:#ea4335;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;' + (cfEsMovil() ? 'display:none;' : '');
-    gmailEl.innerText='📧 Gmail'; gmailEl.title='Leer mails de Santander';
-    gmailEl.onclick=cfGmailLoginYChequear;
-    bar.appendChild(gmailEl);
-    const revisarEl = document.createElement('button'); revisarEl.id='btn-revisar-pendientes';
-    revisarEl.style.cssText='background:#0f766e;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    revisarEl.innerText='🔍 Pendientes'; revisarEl.title='Revisar si hay mails de pagos pendientes de procesar';
-    revisarEl.onclick=cfRevisarPendientes;
-    bar.appendChild(revisarEl);
-    const ayudaEl = document.createElement('button'); ayudaEl.id='btn-ayuda';
-    ayudaEl.style.cssText='background:#6366f1;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    ayudaEl.innerText='❓ Ayuda';
-    ayudaEl.onclick=()=>window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes');
-    bar.appendChild(ayudaEl);
-    const snapshotEl = document.createElement('button'); snapshotEl.id='btn-snapshot-local';
-    snapshotEl.style.cssText='background:#0f766e;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    snapshotEl.innerText='💾 Local'; snapshotEl.title='Ver/restaurar snapshots locales';
-    snapshotEl.onclick=cfMostrarSnapshots;
-    bar.appendChild(snapshotEl);
-    const aiEl = document.createElement('button'); aiEl.id='btn-ai-panel';
-    aiEl.style.cssText='background:#4f46e5;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    aiEl.innerText='\uD83E\uDD16 IA'; aiEl.title='Consultar datos con IA';
-    aiEl.onclick=toggleAIPanel;
-    bar.appendChild(aiEl);
-    const cacheEl = document.createElement('button'); cacheEl.id='btn-clear-cache';
-    cacheEl.style.cssText='background:#475569;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
-    cacheEl.innerText='🗑️ Cache'; cacheEl.title='Limpiar caché y recargar';
-    cacheEl.onclick=limpiarCache;
-    bar.appendChild(cacheEl);
+    // Elemento oculto: mantiene compatibilidad con syncSetBadge() (usado por el resto del código)
+    // sin mostrar un botón propio — el estado de Drive se muestra dentro del dropdown "Más".
+    const syncBadgeOculto = document.createElement('span'); syncBadgeOculto.id='sync-badge';
+    syncBadgeOculto.style.cssText='display:none;';
+    bar.appendChild(syncBadgeOculto);
+
+    const masEl = document.createElement('button'); masEl.id='btn-mas';
+    masEl.style.cssText='background:#475569;color:white;border:none;border-radius:4px;padding:5px 12px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:4px;align-self:center;white-space:nowrap;';
+    masEl.innerText='⋯ Más';
+    masEl.onclick=(e)=>{ e.stopPropagation(); cfToggleMenuMas(); };
+    bar.appendChild(masEl);
+
     const salirEl = document.createElement('button'); salirEl.id='btn-salir';
     salirEl.style.cssText='background:#334155;color:white;border:none;border-radius:4px;padding:5px 12px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:6px;align-self:center;white-space:nowrap;';
     salirEl.innerText='🚪 Salir'; salirEl.onclick=syncAlSalir;
@@ -679,13 +732,9 @@ function buildMesActual() {
           <h2 style="margin:0;font-size:20px;">Gestión Financiera y Control de Gastos <span id="app-version-tag" style="font-size:13px;color:#4f46e5;font-weight:bold;">${APP_VERSION}</span></h2>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="btn" onclick="mostrarInformeSemanal()" style="background:#7c3aed;color:white;font-size:12px;padding:7px 12px;">📊 Informe Semanal</button>
           <button class="btn btn-mes"   id="btn-nuevo-mes">🔄 Abrir Nuevo Mes</button>
-          <button class="btn btn-blue"  id="btn-exportar">💾 Exportar</button>
-          <button class="btn btn-green" id="btn-importar-trigger">📥 Importar</button>
+          <button class="btn" id="btn-mas-mes" style="background:#475569;color:white;font-size:12px;padding:7px 12px;">⋯ Más</button>
           <input type="file" id="input-backup" accept=".json" style="display:none;">
-          <button class="btn btn-dark"  onclick="window.print()">🖨️ PDF</button>
-          <button class="btn" id="btn-cf-carpeta" onclick="cfSeleccionarCarpeta()" title="Vincular carpeta para backup automático" style="background:#0f766e;color:white;font-size:12px;padding:7px 12px;">📂 Carpeta</button>
           <span id="cf-carpeta-status" style="display:none;font-size:10px;color:#34d399;font-weight:700;"></span>
 
         </div>
@@ -894,9 +943,8 @@ function bindMesActual() {
     g('form-cuota')?.addEventListener('submit', altaCuota);
     g('form-rubro')?.addEventListener('submit', altaRubro);
     g('input-backup')?.addEventListener('change', importar);
-    g('btn-exportar')?.addEventListener('click', exportar);
-    g('btn-importar-trigger')?.addEventListener('click', ()=>g('input-backup')?.click());
     g('btn-nuevo-mes')?.addEventListener('click', nuevoMes);
+    g('btn-mas-mes')?.addEventListener('click', (e)=>{ e.stopPropagation(); cfToggleMenuMasMes(); });
     g('cuota-total')?.addEventListener('input', previewCuota);
     g('cuota-cant')?.addEventListener('input', previewCuota);
 }
@@ -2831,7 +2879,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.51-dev2';
+const APP_VERSION = 'v3.7.52-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
