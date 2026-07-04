@@ -354,9 +354,9 @@
       <tr><td>📈 Reportes</td><td>Gráficos y resúmenes del período actual</td></tr>
       <tr><td>📊 Inversiones</td><td>Portfolio de acciones e instrumentos financieros</td></tr>
       <tr><td>📅 Anual</td><td>Resumen de los últimos 12 períodos cerrados</td></tr>
-      <tr><td>Períodos anteriores</td><td>Tabs adicionales por cada mes cerrado (solo lectura)</td></tr>
+      <tr><td>📅 Meses cerrados</td><td>Desplegable con todos los meses cerrados (solo lectura)</td></tr>
     </table>
-    <div class="info">ℹ️ Los períodos cerrados aparecen como tabs adicionales a la derecha. Son de solo lectura y muestran el estado exacto al cierre.</div>
+    <div class="info">ℹ️ Los períodos cerrados se acceden desde el botón 📅 Meses cerrados al final de la barra. Son de solo lectura y muestran el estado exacto al cierre.</div>
   </section>
 
   <!-- BACKUP -->
@@ -1012,6 +1012,15 @@ console.log(gToken ? 'Token activo' : 'Sin token')</pre>
         <div class="section-title">Historial de cambios</div>
         <div class="section-subtitle">Registro de versiones — de más reciente a más antigua (entorno dev)</div>
       </div>
+    </div>
+
+    <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.50-dev2</span><span class="changelog-tag tag-feature">feature</span></div>
+      <ul class="changelog-list">
+        <li>Los meses cerrados ya no ocupan una tab cada uno en el header — ahora se accede a ellos desde un único botón 📅 Meses cerrados con un desplegable</li>
+        <li>El desplegable muestra el más reciente arriba, con la misma opción de eliminar (✕) que tenían las tabs individuales</li>
+        <li>Al abrir un mes cerrado aparece un indicador junto al botón con su nombre; tocarlo reabre el desplegable, y su ✕ vuelve a Mes Actual</li>
+      </ul>
     </div>
 
     <div class="changelog-entry">
