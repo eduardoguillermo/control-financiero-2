@@ -380,6 +380,13 @@ async function cfVerificarPermiso(handle) {
     } catch(e) { return false; }
 }
 
+// Solo consulta el permiso (queryPermission) sin pedirlo — no requiere gesto del usuario,
+// así que es seguro llamarla en automático al abrir la app.
+async function cfPermisoOtorgado(handle) {
+    try { return (await handle.queryPermission({ mode: 'readwrite' })) === 'granted'; }
+    catch(e) { return false; }
+}
+
 async function cfSeleccionarCarpeta() {
     if (!('showDirectoryPicker' in window)) {
         alert('Tu navegador no soporta la selección de carpeta local. Usá Chrome o Brave.');
@@ -436,15 +443,47 @@ async function cfRestaurarCarpeta() {
     try {
         const handle = await cfLeerHandle();
         if (!handle) return;
-        const ok = await cfVerificarPermiso(handle);
-        if (!ok) return;
+        window._cfFolderHandlePendiente = handle; // por si hace falta reautorizar
+        const ok = await cfPermisoOtorgado(handle);
+        if (!ok) { cfMostrarBannerReauthCarpeta(handle); return; }
         window._cfFolderHandle = handle;
         cfActualizarEstadoCarpeta(handle.name);
     } catch(e) { console.warn('cfRestaurarCarpeta:', e); }
 }
 
+// Banner discreto: el permiso de la carpeta venció y necesita un click real del usuario
+// (la API no permite renovarlo en automático — requiere gesto del usuario).
+function cfMostrarBannerReauthCarpeta(handle) {
+    if (document.getElementById('cf-reauth-carpeta')) return;
+    const b = document.createElement('div');
+    b.id = 'cf-reauth-carpeta';
+    b.style.cssText = 'position:fixed;bottom:16px;left:16px;background:#1e293b;color:#f1f5f9;padding:10px 14px;border-radius:8px;z-index:9998;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:12.5px;max-width:320px;';
+    b.innerHTML = '🔒 La carpeta local (' + handle.name + ') necesita que confirmes el acceso de nuevo.'
+        + '<button id="cf-reauth-btn" style="background:#0f766e;color:white;border:none;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Reautorizar</button>'
+        + '<span id="cf-reauth-x" style="cursor:pointer;color:#94a3b8;padding:0 2px;">✕</span>';
+    document.body.appendChild(b);
+    document.getElementById('cf-reauth-x').onclick = () => b.remove();
+    document.getElementById('cf-reauth-btn').onclick = async () => {
+        try {
+            const granted = await handle.requestPermission({ mode: 'readwrite' }) === 'granted';
+            if (granted) {
+                window._cfFolderHandle = handle;
+                cfActualizarEstadoCarpeta(handle.name);
+                b.remove();
+            } else {
+                alert('No se otorgó el permiso. Podés vincular la carpeta de nuevo con el botón 📂 Carpeta.');
+            }
+        } catch(e) { alert('Error al reautorizar: ' + e.message); }
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.title = 'Control Financiero ' + APP_VERSION;
+    // Pedir almacenamiento persistente: evita que el navegador evicte IndexedDB
+    // (y con eso el handle de la carpeta local) por presión de espacio o inactividad.
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(()=>{});
+    }
     // Snapshot local al cerrar con X (beforeunload — síncrono, siempre funciona)
     window.addEventListener('beforeunload', () => { cfHacerSnapshot(false); });
     // Snapshot + intento Drive al ocultar pestaña
@@ -2792,7 +2831,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.50-dev2';
+const APP_VERSION = 'v3.7.51-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
