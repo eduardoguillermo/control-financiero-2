@@ -96,6 +96,48 @@ function cfToggleDriveMenu() {
     setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
 }
 
+// Menú del botón "📅 Meses cerrados" — lista desplegable en vez de una tab por mes
+function cfToggleMesesMenu() {
+    const existente = document.getElementById('meses-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-meses-cerrados');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='meses-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-260)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:260px;max-height:360px;overflow-y:auto;';
+    const lista = [...historicoMeses].reverse();
+    if (!lista.length) {
+        const vacio = document.createElement('div');
+        vacio.innerText = 'Todavía no hay meses cerrados';
+        vacio.style.cssText = 'padding:14px;font-size:12px;color:#94a3b8;text-align:center;';
+        m.appendChild(vacio);
+    } else {
+        lista.forEach((mes, i) => {
+            const o = document.createElement('div');
+            o.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:13px;cursor:pointer;color:#1e293b;' + (i>0 ? 'border-top:1px solid #f1f5f9;' : '') + (tabActivo===mes.id ? 'background:#f0fdfa;font-weight:700;' : '');
+            o.onmouseover = () => { if (tabActivo!==mes.id) o.style.background = '#f8fafc'; };
+            o.onmouseout  = () => { if (tabActivo!==mes.id) o.style.background = ''; };
+            const nombreSpan = document.createElement('span');
+            nombreSpan.innerText = '🗂 ' + mes.nombre;
+            nombreSpan.onclick = () => { m.remove(); tabActivo = mes.id; renderTabs(); renderContenido(); };
+            nombreSpan.style.flex = '1';
+            const xSpan = document.createElement('span');
+            xSpan.innerText = '✕'; xSpan.style.cssText = 'color:#94a3b8;font-size:11px;padding-left:10px;';
+            xSpan.onclick = () => {
+                if (confirm('¿Eliminar "' + mes.nombre + '"?')) {
+                    historicoMeses = historicoMeses.filter(x=>x.id!==mes.id);
+                    if (tabActivo===mes.id) tabActivo = null;
+                    guardar(); m.remove(); renderTabs(); renderContenido();
+                }
+            };
+            o.appendChild(nombreSpan); o.appendChild(xSpan);
+            m.appendChild(o);
+        });
+    }
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('meses-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
 const CF_BKUP_KEY = CF_NS+'cf_backups';
 const CF_BKUP_MAX = 10;
@@ -487,23 +529,22 @@ function renderTabs() {
     salirEl.innerText='🚪 Salir'; salirEl.onclick=syncAlSalir;
     bar.appendChild(salirEl);
 
-    [...historicoMeses].reverse().forEach(mes => {
-        const t = document.createElement('div');
-        t.className = 'tab historico' + (tabActivo===mes.id ? ' activo' : '');
-        t.innerHTML = `<span>🗂 ${mes.nombre}</span><span class="tab-x">✕</span>`;
-        t.onclick = e => {
-            if (e.target.classList.contains('tab-x')) {
-                if (confirm(`¿Eliminar "${mes.nombre}"?`)) {
-                    historicoMeses = historicoMeses.filter(m=>m.id!==mes.id);
-                    if (tabActivo===mes.id) tabActivo = null;
-                    guardar(); renderTabs(); renderContenido();
-                }
-                return;
-            }
-            tabActivo = mes.id; renderTabs(); renderContenido();
+    const mesesEl = document.createElement('button'); mesesEl.id='btn-meses-cerrados';
+    mesesEl.style.cssText='background:#0f766e;color:white;border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:bold;cursor:pointer;margin-left:6px;align-self:center;white-space:nowrap;display:flex;align-items:center;gap:4px;';
+    mesesEl.innerHTML = '📅 Meses cerrados' + (historicoMeses.length ? ' <span style="background:rgba(255,255,255,0.25);border-radius:10px;padding:0 6px;font-size:10px;">' + historicoMeses.length + '</span>' : '');
+    mesesEl.onclick = (e) => { e.stopPropagation(); cfToggleMesesMenu(); };
+    bar.appendChild(mesesEl);
+    if (tabActivo && historicoMeses.some(m => m.id === tabActivo)) {
+        const mesActivo = historicoMeses.find(m => m.id === tabActivo);
+        const badgeMes = document.createElement('div');
+        badgeMes.className = 'tab activo';
+        badgeMes.innerHTML = '<span>🗂 ' + mesActivo.nombre + '</span><span class="tab-x">✕</span>';
+        badgeMes.onclick = (e) => {
+            if (e.target.classList.contains('tab-x')) { tabActivo = null; renderTabs(); renderContenido(); return; }
+            cfToggleMesesMenu();
         };
-        bar.appendChild(t);
-    });
+        bar.appendChild(badgeMes);
+    }
 }
 
 function renderContenido() {
@@ -2751,7 +2792,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.49-dev2';
+const APP_VERSION = 'v3.7.50-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
