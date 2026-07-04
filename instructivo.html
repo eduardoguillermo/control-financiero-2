@@ -238,6 +238,17 @@
     .content { margin-left: 0; padding: 20px 16px; }
     .hero { margin: -20px -16px 32px; padding: 24px 16px; }
   }
+  /* Changelog */
+  .changelog-entry { border-left: 3px solid #6366f1; padding: 4px 0 4px 16px; margin-bottom: 28px; }
+  .changelog-version { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .changelog-version .v-num { font-size: 16px; font-weight: 700; color: #1e293b; }
+  .changelog-list { margin: 0; padding-left: 20px; font-size: 13.5px; color: #4b5563; line-height: 1.7; }
+  .changelog-list li { margin-bottom: 3px; }
+  .changelog-tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-right: 4px; }
+  .tag-feature { background: #dbeafe; color: #1e40af; }
+  .tag-fix { background: #fee2e2; color: #991b1b; }
+  .tag-infra { background: #f3e8ff; color: #6b21a8; }
+  .tag-docs { background: #fef3c7; color: #92400e; }
 </style>
 </head>
 <body>
@@ -281,6 +292,7 @@
   <a href="#drive">☁️ Sincronización Drive</a>
   <a href="#impresion">🖨️ Impresión / PDF</a>
   <a href="#consola">🛠 Comandos consola</a>
+  <a href="#changelog">🧾 Historial de cambios</a>
 </nav>
 
 <!-- Contenido -->
@@ -991,6 +1003,39 @@ syncSilencioso()
 
 // Ver token de Drive activo
 console.log(gToken ? 'Token activo' : 'Sin token')</pre>
+  </section>
+
+  <section class="section" id="changelog">
+    <div class="section-header">
+      <span class="section-icon">🧾</span>
+      <div>
+        <div class="section-title">Historial de cambios</div>
+        <div class="section-subtitle">Registro de versiones — de más reciente a más antigua (entorno dev)</div>
+      </div>
+    </div>
+
+    <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.48-dev2</span><span class="changelog-tag tag-fix">fix</span></div>
+      <ul class="changelog-list">
+        <li>Al cancelar el modal de "Gasto detectado" o "Pago de servicio fijo", el mail ya no se marca como procesado — vuelve a aparecer en el próximo chequeo</li>
+        <li>Corregida la versión del splash, que había quedado desactualizada respecto a <code>APP_VERSION</code></li>
+      </ul>
+    </div>
+
+    <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.47-dev2</span><span class="changelog-tag tag-feature">feature</span></div>
+      <ul class="changelog-list">
+        <li>Nuevo botón 🔍 Pendientes: revisa manualmente si hay mails de pagos pendientes de procesar, usando la sesión ya activa (sin forzar relogin)</li>
+        <li>A diferencia de 📧 Gmail, el botón 🔍 Pendientes está habilitado también en mobile</li>
+      </ul>
+    </div>
+
+    <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.46-dev2</span><span class="changelog-tag tag-infra">infra</span></div>
+      <ul class="changelog-list">
+        <li>Punto de partida de este historial: integración Gmail/MercadoPago, fixes de zona horaria (UTC → local) y esquema de color fuchsia/violeta en el modal de vencimientos</li>
+      </ul>
+    </div>
   </section>
 
 </main>
