@@ -926,6 +926,7 @@ localStorage.removeItem('dev2_cf_gmail_processed'); cfGmailChequear()</pre>
     <p>La app mantiene los últimos 7 backups en la carpeta, eliminando los más antiguos automáticamente.</p>
 
     <div class="note">📌 Esta función requiere Chrome o Edge en escritorio. No disponible en Firefox ni Safari.</div>
+    <div class="note">📌 El permiso de escritura puede vencer con el tiempo (es una restricción del navegador, no un bug). Cuando eso pasa, aparece un banner "🔒 Reautorizar" abajo a la izquierda — un solo click renueva el permiso sin tener que volver a elegir la carpeta.</div>
   </section>
 
   <!-- DRIVE -->
@@ -1012,6 +1013,14 @@ console.log(gToken ? 'Token activo' : 'Sin token')</pre>
         <div class="section-title">Historial de cambios</div>
         <div class="section-subtitle">Registro de versiones — de más reciente a más antigua (entorno dev)</div>
       </div>
+    </div>
+
+    <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.51-dev2</span><span class="changelog-tag tag-fix">fix</span></div>
+      <ul class="changelog-list">
+        <li>Se pide almacenamiento persistente (<code>navigator.storage.persist()</code>) al abrir la app, para reducir que el navegador evicte el handle de la carpeta local guardado en IndexedDB</li>
+        <li>Cuando el permiso de la carpeta local vence, ya no se intenta renovar en silencio (la API lo rechaza sin gesto del usuario) — ahora aparece un banner "🔒 Reautorizar" que renueva el permiso con un solo click</li>
+      </ul>
     </div>
 
     <div class="changelog-entry">
