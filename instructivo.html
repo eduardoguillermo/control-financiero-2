@@ -1011,6 +1011,14 @@ console.log(gToken ? 'Token activo' : 'Sin token')</pre>
     </div>
 
     <div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.7.56-dev2</span><span class="changelog-tag tag-fix">fix</span></div>
+      <ul class="changelog-list">
+        <li>El <code>manifest.json</code> de dev apuntaba a <code>/finanzas/</code> (la ruta de producción) en <code>start_url</code>, <code>scope</code> e <code>id</code> — Chrome rechazaba instalarla como PWA por el desajuste de scope. Corregido a <code>/control-financiero-2/</code></li>
+        <li>Nombre de la app renombrado a "Control Financiero (DEV)" para distinguirla en el listado de apps instaladas</li>
+      </ul>
+    </div>
+
+    <div class="changelog-entry">
       <div class="changelog-version"><span class="v-num">v3.7.55-dev2</span><span class="changelog-tag tag-infra">infra</span></div>
       <ul class="changelog-list">
         <li>Logo del entorno de desarrollo diferenciado del de producción: mismo símbolo $ pero en ámbar con cinta "DEV", para no confundir accesos directos del escritorio</li>
