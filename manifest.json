@@ -1,10 +1,10 @@
 {
-  "name": "Control Financiero",
-  "short_name": "Finanzas",
-  "description": "Auditoría Financiera y Conciliación Unificada",
-  "id": "/finanzas/control_financiero_v3.html",
-  "start_url": "/finanzas/control_financiero_v3.html",
-  "scope": "/finanzas/",
+  "name": "Control Financiero (DEV)",
+  "short_name": "Finanzas DEV",
+  "description": "Auditoría Financiera y Conciliación Unificada — entorno de desarrollo",
+  "id": "/control-financiero-2/control_financiero_v3.html",
+  "start_url": "/control-financiero-2/control_financiero_v3.html",
+  "scope": "/control-financiero-2/",
   "display": "standalone",
   "background_color": "#f1f5f9",
   "theme_color": "#1e293b",
@@ -27,13 +27,13 @@
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Control Financiero"
+      "label": "Control Financiero (DEV)"
     },
     {
       "src": "./icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "label": "Control Financiero"
+      "label": "Control Financiero (DEV)"
     }
   ]
 }
