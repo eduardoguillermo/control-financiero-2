@@ -1021,10 +1021,15 @@ function render() {
         if (!ultimosPagos.length) { wPT.innerHTML = ''; }
         else {
             wPT.innerHTML = '<div style="font-size:11px;font-weight:bold;color:#94a3b8;text-transform:uppercase;margin:10px 0 4px;">Últimos pagos de tarjeta</div>'
-                + ultimosPagos.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-bottom:1px solid #f1f5f9;">
-                    <span style="color:#64748b;">${p.fecha} · ${p.tarjetaNombre} <span style="color:#94a3b8;">(de ${p.bancoNombre})</span></span>
-                    <span style="display:flex;align-items:center;gap:8px;"><b style="color:#a855f7;">-${fmt(p.monto)}</b><button onclick="elimPagoTarjeta('${p.id}')" style="border:none;background:none;color:#cbd5e1;cursor:pointer;font-size:13px;">✕</button></span>
-                </div>`).join('');
+                + ultimosPagos.map(p => {
+                    const [y,m,d] = (p.fecha||'').split('-');
+                    const fechaCorta = (d&&m) ? d+'/'+m : (p.fecha||'');
+                    const tit = 'Pagado desde ' + p.bancoNombre + ' el ' + p.fecha;
+                    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:5px 8px;border-bottom:1px solid #f1f5f9;">
+                    <span title="${tit}" style="color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">✅ ${fechaCorta} ${p.tarjetaNombre}</span>
+                    <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><b style="color:#a855f7;">-${fmt(p.monto)}</b><button onclick="elimPagoTarjeta('${p.id}')" style="border:none;background:none;color:#cbd5e1;cursor:pointer;font-size:13px;">✕</button></span>
+                </div>`;
+                }).join('');
         }
     }
     // Transferencias
@@ -2896,7 +2901,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.59-dev2';
+const APP_VERSION = 'v3.7.60-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
