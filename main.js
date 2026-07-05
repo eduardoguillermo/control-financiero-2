@@ -906,6 +906,10 @@ function buildMesActual() {
                   <div><label>Monto ($)</label><input type="number" id="corr-monto" required placeholder="0" step="1"></div>
                   <div><label>Pagar con</label><select id="corr-medio" required></select></div>
                 </div>
+                <div id="grp-corr-banco-origen" style="display:none;margin-bottom:12px;">
+                  <label style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Sale del banco (opcional)</label>
+                  <select id="corr-banco-origen" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;width:100%;max-width:280px;"><option value="">— No descontar de ningún banco —</option></select>
+                </div>
                 <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
                   <div><label>Clase</label><select id="corr-clase" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;">
                     <option value="M">M — Mío</option>
@@ -939,6 +943,8 @@ function bindMesActual() {
     g('form-tarjeta')?.addEventListener('submit', altaTarjeta);
     g('form-servicio')?.addEventListener('submit', altaServicio);
     g('form-corriente')?.addEventListener('submit', altaCorriente);
+    g('corr-medio')?.addEventListener('change', toggleCorrBancoOrigen);
+    g('corr-es-ingreso')?.addEventListener('change', toggleCorrBancoOrigen);
     g('form-transf')?.addEventListener('submit', altaTransferencia);
     g('form-cuota')?.addEventListener('submit', altaCuota);
     g('form-rubro')?.addEventListener('submit', altaRubro);
@@ -957,11 +963,13 @@ function render() {
     const tT=document.getElementById('t-tarjetas'), tS=document.getElementById('t-servicios');
     const tTr=document.getElementById('t-transf'), rL=document.getElementById('rubros-lista');
     const sRubro=document.getElementById('corr-rubro'), sMedio=document.getElementById('corr-medio');
+    const sBancoOrigen=document.getElementById('corr-banco-origen');
     const sOrig=document.getElementById('transf-origen'), sDest=document.getElementById('transf-destino');
     const sMedCuota=document.getElementById('cuota-medio');
     tB.innerHTML=''; tT.innerHTML=''; tS.innerHTML=''; tTr.innerHTML=''; rL.innerHTML='';
     [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) s.innerHTML=''; });
     listaBancos.forEach(b=>{ [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) addOpt(s,b.id,'🏦 '+b.nombre); }); });
+    if(sBancoOrigen){ sBancoOrigen.innerHTML='<option value="">— No descontar de ningún banco —</option>'; listaBancos.forEach(b=>addOpt(sBancoOrigen,b.id,'🏦 '+b.nombre)); }
     listaTarjetas.forEach(t=>{ [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) addOpt(s,t.id,'💳 '+t.nombre); }); });
     if(sRubro){ sRubro.innerHTML=''; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sRubro,r,r)); }
     const sSrvRubro=document.getElementById('srv-rubro');
@@ -1102,11 +1110,14 @@ function render() {
                 const prev=c.fechaPago, next=e.target.value, factor=c.esIngreso?1:-1;
                 if(!prev&&next&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo+=c.monto*factor; }
                 if(prev&&!next&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo-=c.monto*factor; }
+                if(!prev&&next&&c.bancoOrigenId){ const bo=listaBancos.find(b=>b.id===c.bancoOrigenId); if(bo) bo.saldo-=c.monto; }
+                if(prev&&!next&&c.bancoOrigenId){ const bo=listaBancos.find(b=>b.id===c.bancoOrigenId); if(bo) bo.saldo+=c.monto; }
                 c.fechaPago=next; guardar(); render();
             };
             const inpM=inpNum(c.monto,v=>{
                 const diff=v-c.monto;
                 if(c.fechaPago&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo+=c.esIngreso?diff:-diff; }
+                if(c.fechaPago&&c.bancoOrigenId){ const bo=listaBancos.find(b=>b.id===c.bancoOrigenId); if(bo) bo.saldo-=diff; }
                 c.monto=v; guardar(); calcDash();
             });
             inpM.style.cssText='font-weight:bold;color:'+(c.esIngreso?'#0284c7':'#10b981')+';';
@@ -1118,7 +1129,9 @@ function render() {
             const tdCl=el('td','tc'); tdCl.appendChild(selCl);
             const tdR=el('td'); tdR.appendChild(selR);
             const tdD=el('td'); tdD.appendChild(inpD);
-            const tdM=el('td'); tdM.style.color='#64748b'; tdM.innerText=(c.esIngreso?'⬆ ':'')+medioNom(c.medioPagoId);
+            const tdM=el('td'); tdM.style.color='#64748b';
+            const bancoOrigenNom = c.bancoOrigenId ? listaBancos.find(b=>b.id===c.bancoOrigenId)?.nombre : '';
+            tdM.innerHTML=(c.esIngreso?'⬆ ':'')+medioNom(c.medioPagoId)+(bancoOrigenNom?' <span style="font-size:10px;color:#94a3b8;">(de '+bancoOrigenNom+')</span>':'');
             const tdFP=el('td','tc'); tdFP.appendChild(inpFP);
             const tdMon=el('td','tr'); tdMon.appendChild(inpM);
             const tdX=el('td','tc no-print'); const bX=el('button','btn-del'); bX.innerText='✕'; bX.onclick=()=>elimCorriente(c.id); tdX.appendChild(bX);
@@ -1349,14 +1362,22 @@ function altaServicio(e) {
     listaServicios.push({id:'s_'+Date.now(),nombre:vGet('srv-nombre'),presupuesto:nGet('srv-presupuesto'),pagado:0,fVto:vGet('srv-vto'),fPago:'',medioPagoId:medioId,clase:vGet('srv-clase')||'M',rubro:vGet('srv-rubro')||'',nota:vGet('srv-nota')||''});
     guardar(); e.target.reset(); render();
 }
+function toggleCorrBancoOrigen() {
+    const medioId=vGet('corr-medio'), esIngreso=document.getElementById('corr-es-ingreso')?.checked||false;
+    const esTarjeta=listaTarjetas.some(t=>t.id===medioId);
+    const grp=document.getElementById('grp-corr-banco-origen');
+    if(grp) grp.style.display=(esTarjeta&&esIngreso)?'block':'none';
+}
 function altaCorriente(e) {
     e.preventDefault();
     const medioId=vGet('corr-medio'); if(!medioId){alert('Configure un medio de pago.'); return;}
     const monto=nGet('corr-monto'), esIngreso=document.getElementById('corr-es-ingreso')?.checked||false;
     const clase=vGet('corr-clase')||'M';
-    listaCorrientes.push({id:'c_'+Date.now(),rubro:vGet('corr-rubro'),detalle:vGet('corr-detalle'),monto,fechaPago:'',medioPagoId:medioId,esIngreso,clase});
+    const esTarjeta=listaTarjetas.some(t=>t.id===medioId);
+    const bancoOrigenId=(esTarjeta&&esIngreso)?(vGet('corr-banco-origen')||''):'';
+    listaCorrientes.push({id:'c_'+Date.now(),rubro:vGet('corr-rubro'),detalle:vGet('corr-detalle'),monto,fechaPago:'',medioPagoId:medioId,esIngreso,clase,bancoOrigenId});
     const chk=document.getElementById('corr-es-ingreso'); if(chk) chk.checked=false;
-    guardar(); e.target.reset(); render();
+    guardar(); e.target.reset(); toggleCorrBancoOrigen(); render();
 }
 function altaTransferencia(e) {
     e.preventDefault();
@@ -1416,6 +1437,7 @@ function elimRubro(r)    { if(listaCorrientes.some(c=>c.rubro===r)){alert('Rubro
 function elimCorriente(id) {
     const c=listaCorrientes.find(x=>x.id===id);
     if(c&&c.fechaPago&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo+=c.esIngreso?-c.monto:c.monto; }
+    if(c&&c.fechaPago&&c.bancoOrigenId){ const bo=listaBancos.find(b=>b.id===c.bancoOrigenId); if(bo) bo.saldo+=c.monto; }
     listaCorrientes=listaCorrientes.filter(x=>x.id!==id); guardar(); render();
 }
 function elimTransferencia(id) {
@@ -2879,7 +2901,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.56-dev2';
+const APP_VERSION = 'v3.7.57-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
