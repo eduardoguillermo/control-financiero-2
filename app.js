@@ -2927,7 +2927,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.63-dev2';
+const APP_VERSION = 'v3.7.64-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly'
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -3980,7 +3980,8 @@ function limpiarCache() {
 //  Detección automática mails Santander
 // ════════════════════════════════════════════════════
 
-const CF_SANTANDER_QUERY = '(subject:(Pagaste OR "débito automático" OR "débito con tu") OR from:info@mercadopago.com) newer_than:30d';
+const CF_SANTANDER_QUERY = '(subject:(Pagaste OR "débito automático" OR "débito con tu") OR from:info@mercadopago.com OR (from:eduardo.bodega@gmail.com has:attachment)) newer_than:30d';
+const CF_COMPROBANTE_REMITENTE = 'eduardo.bodega@gmail.com';
 
 function cfEsMovil() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -4096,6 +4097,38 @@ function cfParsearMailMercadoPago(texto) {
     return resultado;
 }
 
+function cfGmailHeader(payload, nombre) {
+    if (!payload || !payload.headers) return '';
+    const h = payload.headers.find(x => x.name && x.name.toLowerCase() === nombre.toLowerCase());
+    return h ? h.value : '';
+}
+
+function cfGmailBuscarAdjunto(payload) {
+    if (!payload) return null;
+    if (payload.body && payload.body.attachmentId && payload.filename) {
+        return { attachmentId: payload.body.attachmentId, mimeType: payload.mimeType || '', filename: payload.filename };
+    }
+    if (payload.parts) {
+        for (const part of payload.parts) {
+            const r = cfGmailBuscarAdjunto(part);
+            if (r) return r;
+        }
+    }
+    return null;
+}
+
+function cfGmailB64UrlToB64(s) {
+    return s.replace(/-/g, '+').replace(/_/g, '/');
+}
+
+async function cfGmailDescargarAdjunto(token, messageId, attachmentId) {
+    const resp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+        { headers: { Authorization: 'Bearer ' + token } });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data && data.data ? cfGmailB64UrlToB64(data.data) : null;
+}
+
 function cfParsearMailMercadoPagoTransferencia(texto) {
     if (!texto) return null;
     const esTransf = /ya enviamos tu transferencia/i.test(texto);
@@ -4126,7 +4159,27 @@ async function cfGmailBuscarGastos(token) {
         const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
             { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
         const texto = cfGmailExtraerTexto(det.payload);
-        const datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
+        let datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
+
+        // Sin match de texto: si es un reenvío tuyo con adjunto, tratarlo como comprobante manual
+        if (!datos) {
+            const from = cfGmailHeader(det.payload, 'From');
+            const esReenvioComprobante = from && from.toLowerCase().includes(CF_COMPROBANTE_REMITENTE);
+            if (esReenvioComprobante) {
+                const adj = cfGmailBuscarAdjunto(det.payload);
+                if (adj) {
+                    const b64 = await cfGmailDescargarAdjunto(token, msg.id, adj.attachmentId);
+                    if (b64) {
+                        datos = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Transferencia', tipo: 'gasto', origen: 'Comprobante MP' };
+                        const rubro = CF_MP_TRANSFER_RUBROS[cfNormalizarNombre(texto)]; // por si el cuerpo trae texto reconocible
+                        if (rubro) datos.rubroSugerido = rubro;
+                        datos._attachmentDataUrl = `data:${adj.mimeType || 'image/jpeg'};base64,${b64}`;
+                        datos._attachmentEsPdf = /pdf/i.test(adj.mimeType || '');
+                    }
+                }
+            }
+        }
+
         if (datos) {
             if (!datos.fecha && det.internalDate) {
                 const d = new Date(parseInt(det.internalDate));
@@ -4584,9 +4637,16 @@ function cfAbrirModalGasto(datos) {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
             <span style="font-size:24px;">📧</span>
             <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Gasto detectado</h3>
-            <span style="font-size:10px;background:#ea4335;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
+            <span style="font-size:10px;background:${datos.origen === 'Comprobante MP' ? '#009ee3' : '#ea4335'};color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
         </div>
-        ${(!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
+        ${datos._attachmentDataUrl ? `
+        <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;margin-bottom:12px;">
+            ${datos._attachmentEsPdf
+                ? `<a href="${datos._attachmentDataUrl}" target="_blank" style="display:block;text-align:center;padding:16px;color:#a855f7;font-size:13px;font-weight:600;text-decoration:none;">📄 Ver comprobante PDF</a>`
+                : `<img src="${datos._attachmentDataUrl}" style="width:100%;border-radius:6px;display:block;">`}
+        </div>
+        <div style="font-size:11px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">✍️ Completá monto y rubro mirando el comprobante.</div>
+        ` : (!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:11px;">
             <div style="flex:1;">
                 <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto</label>
@@ -4603,7 +4663,7 @@ function cfAbrirModalGasto(datos) {
         <div style="margin-bottom:11px;">
             <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Comercio / Detalle</label>
             <input type="text" id="cf-gm-detalle" value="${datos.comercio || ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            <div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>
+            ${datos.tarjeta ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>` : `<div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta}</div>`}
         </div>
         <div style="display:flex;gap:8px;margin-bottom:11px;">
             <div style="flex:1;">
