@@ -2927,7 +2927,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.66-dev2';
+const APP_VERSION = 'v3.7.68-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly'
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -4551,9 +4551,11 @@ function cfAbrirModalPagoServicio(datos, servicio) {
             <button onclick="cfConfirmarPagoServicio('${servicio.id}')" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#0f766e;color:white;cursor:pointer;">✓ Asentar pago</button>
         </div>
         <div style="display:flex;gap:8px;">
-            <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Registrar como gasto corriente</button>
-            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
+            <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Gasto corriente</button>
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
+            <button onclick="cfDescartarGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #7f1d1d;background:#0f172a;color:#fca5a5;cursor:pointer;">🗑️ Descartar</button>
         </div>
+        <div style="font-size:10.5px;color:#64748b;text-align:center;margin-top:8px;">Cancelar: vuelve a aparecer después · Descartar: no se vuelve a mostrar</div>
     </div>`;
 
     document.body.appendChild(overlay);
@@ -4754,11 +4756,19 @@ function cfConfirmarGasto() {
             id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
             monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
         });
+        const cuentaUSD = listaCuentasUSD.find(c => c.id === medioId);
+        if (cuentaUSD) cuentaUSD.saldo -= monto;
     } else {
         listaCorrientes.push({
             id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
             monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
         });
+        // El gasto ya nace "pagado" (fechaPago seteada), así que no dispara el toggle
+        // prev/next que descuenta saldo en la tabla — lo hacemos acá directo.
+        if (esCuentaLiq(medioId)) {
+            const bk = listaBancos.find(b => b.id === medioId);
+            if (bk) bk.saldo -= monto;
+        }
     }
 
     guardar();
