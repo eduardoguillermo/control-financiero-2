@@ -741,6 +741,7 @@ function buildMesActual() {
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-mes"   id="btn-nuevo-mes">🔄 Abrir Nuevo Mes</button>
+          <button class="btn" id="btn-chequear-mails" onclick="cfRevisarPendientes()" style="background:#0f766e;color:white;font-size:12px;padding:7px 12px;">📧 Chequear mails</button>
           <button class="btn" id="btn-mas-mes" style="background:#475569;color:white;font-size:12px;padding:7px 12px;">⋯ Más</button>
           <input type="file" id="input-backup" accept=".json" style="display:none;">
           <span id="cf-carpeta-status" style="display:none;font-size:10px;color:#34d399;font-weight:700;"></span>
@@ -2927,7 +2928,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.68-dev2';
+const APP_VERSION = 'v3.7.69-dev2';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly'
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
