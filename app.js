@@ -45,6 +45,7 @@ let listaRubrosUSD       = leer(CF_NS+'f_rubros_usd_v1')        || ['Electrónic
 let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
+let reportesMesId = null; // null = Mes Actual; si no, id de un mes en historicoMeses — permite correr Reportes a demanda sobre un mes cerrado
 let _syncTimer = null;
 let _syncPendiente = false;
 let _syncActivo = false;
@@ -590,7 +591,7 @@ function renderTabs() {
     mkTab('<span>📊 Mes Actual</span>',  tabActivo===null,       ()=>{ tabActivo=null;       renderTabs(); renderContenido(); });
     mkTab('<span>🎯 Presupuesto</span>', tabActivo==='presupuesto', ()=>{ tabActivo='presupuesto'; renderTabs(); renderContenido(); }, 'background:#f5f3ff;color:#6d28d9;border-color:#c4b5fd;');
     mkTab('<span>💵 Dólares</span>',     tabActivo==='dolares',  ()=>{ tabActivo='dolares';  renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#15803d;border-color:#86efac;');
-    mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
+    mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ if(tabActivo!=='reportes') reportesMesId=null; tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
     // Badge sync + botón Salir — siempre visible en la tab bar
@@ -2358,9 +2359,41 @@ function buildPresupuesto() {
 
 function buildReportes() {
     const wrap=el('div','container'); wrap.style.paddingTop='20px';
-    const hdr=el('div'); hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:12px;border-bottom:3px solid #4f46e5;';
-    hdr.innerHTML=`<div><h2 style="margin:0;font-size:22px;color:#1e293b;">📈 Reportes Financieros</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}</p></div><button onclick="exportarExcel()" class="btn no-print" style="font-size:12px;padding:8px 14px;background:#10b981;color:white;margin-right:6px;">📥 Exportar Excel</button><button onclick="window.print()" class="btn btn-dark no-print" style="font-size:12px;padding:8px 14px;">🖨️ Imprimir</button>`;
+
+    // ── Selector de mes: permite correr este reporte a demanda sobre un mes cerrado ──
+    const mesSel = reportesMesId ? historicoMeses.find(m=>m.id===reportesMesId) : null;
+    const opsMeses = '<option value="">📌 Mes Actual</option>' +
+        [...historicoMeses].reverse().map(m=>`<option value="${m.id}" ${m.id===reportesMesId?'selected':''}>🗂 ${m.nombre}</option>`).join('');
+    const selectorHtml = historicoMeses.length ? `<select onchange="cambiarMesReportes(this.value)" class="no-print" style="font-size:12px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;margin-right:8px;">${opsMeses}</select>` : '';
+    const excelBtn = mesSel
+        ? `<button disabled title="Exportar Excel solo está disponible para el Mes Actual. Para históricos, usá el Excel de Resumen Anual." class="btn no-print" style="font-size:12px;padding:8px 14px;background:#cbd5e1;color:white;margin-right:6px;cursor:not-allowed;">📥 Exportar Excel</button>`
+        : `<button onclick="exportarExcel()" class="btn no-print" style="font-size:12px;padding:8px 14px;background:#10b981;color:white;margin-right:6px;">📥 Exportar Excel</button>`;
+
+    const hdr=el('div'); hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:12px;border-bottom:3px solid #4f46e5;';
+    hdr.innerHTML=`<div><h2 style="margin:0;font-size:22px;color:#1e293b;">📈 Reportes Financieros${mesSel?' · <span style="color:#7c3aed;">'+mesSel.nombre+'</span>':''}</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">${mesSel?'Vista de sólo lectura del período cerrado':new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}</p></div><div class="no-print" style="display:flex;align-items:center;">${selectorHtml}${excelBtn}<button onclick="window.print()" class="btn btn-dark no-print" style="font-size:12px;padding:8px 14px;">🖨️ Imprimir</button></div>`;
     wrap.appendChild(hdr);
+
+    // Valores EN VIVO — se guardan antes de eventualmente pisarlos con el snapshot del mes cerrado.
+    // El reporte 2 (tendencia por rubro entre meses) siempre debe mostrar el mes actual real, sin importar la selección.
+    const liveBancos=listaBancos, liveTarjetas=listaTarjetas, liveServicios=listaServicios,
+          liveCorrientes=listaCorrientes, liveCorrientesUSD=listaCorrientesUSD, liveCuentasUSD=listaCuentasUSD,
+          liveTarjetasUSD=listaTarjetasUSD, liveServiciosUSD=listaServiciosUSD, liveRubros=listaRubros, liveTipoCambio=tipoCambio;
+
+    if(mesSel){
+        const d = mesSel.datos || {};
+        listaBancos = d.listaBancos || [];
+        listaTarjetas = d.listaTarjetas || [];
+        listaServicios = d.listaServicios || [];
+        listaCorrientes = d.listaCorrientes || [];
+        listaCorrientesUSD = d.listaCorrientesUSD || [];
+        listaCuentasUSD = d.listaCuentasUSD || [];
+        listaTarjetasUSD = d.listaTarjetasUSD || [];
+        listaServiciosUSD = d.listaServiciosUSD || [];
+        tipoCambio = d.tipoCambio || liveTipoCambio;
+        // listaRubros queda igual: es configuración actual, no se congela por mes
+    }
+
+    try {
 
     // ── REPORTE 1 ──────────────────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#4f46e5;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 1 · Resumen del Mes Actual</h3>');
@@ -2507,7 +2540,7 @@ function buildReportes() {
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#f59e0b;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 2 · Análisis por Rubro · Últimos 12 Meses</h3>');
     const ultimos12=[...historicoMeses].slice(-12);
     const mesesData=ultimos12.map(m=>({nombre:m.nombre,datos:m.datos}));
-    mesesData.push({nombre:'Mes Actual',datos:{listaCorrientes,listaServicios,listaRubros}});
+    mesesData.push({nombre:'Mes Actual',datos:{listaCorrientes:liveCorrientes,listaServicios:liveServicios,listaRubros:liveRubros}});
     const todosRub2=new Set();
     mesesData.forEach(m=>{
         (m.datos.listaCorrientes||[]).filter(c=>c.fechaPago&&!(c.rubro&&c.rubro.toLowerCase().includes('tarjeta'))).forEach(c=>todosRub2.add(c.rubro));
@@ -2618,7 +2651,19 @@ function buildReportes() {
     }
 
     wrap.insertAdjacentHTML('beforeend', rO);
+
+    } finally {
+        // Restaurar siempre los valores en vivo, incluso si algo falló arriba
+        listaBancos=liveBancos; listaTarjetas=liveTarjetas; listaServicios=liveServicios; listaCorrientes=liveCorrientes;
+        listaCorrientesUSD=liveCorrientesUSD; listaCuentasUSD=liveCuentasUSD; listaTarjetasUSD=liveTarjetasUSD; listaServiciosUSD=liveServiciosUSD;
+        tipoCambio=liveTipoCambio;
+    }
+
     return wrap;
+}
+function cambiarMesReportes(id) {
+    reportesMesId = id || null;
+    renderContenido();
 }
 
 // ═══════════════════════════════════════════
@@ -3116,7 +3161,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.72-dev1';
+const APP_VERSION = 'v3.7.73-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
