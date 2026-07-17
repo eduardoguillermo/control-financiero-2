@@ -32,13 +32,13 @@ let listaCuentasUSD    = leer(K.cuentasUSD)    || [];
 let listaTarjetasUSD   = leer(K.tarjetasUSD)   || [];
 let listaServiciosUSD  = leer(K.serviciosUSD)  || [];
 let listaCorrientesUSD = leer(K.corrientesUSD) || [];
-let listaPagosTarjeta  = leer(K.pagosTarjeta)  || [];
-let listaPagosTarjetaUSD = leer(K.pagosTarjetaUSD) || [];
 let tipoCambio         = leer(K.tipoCambio)    || 1200;
 let listaInstrumentos  = leer(K.instrumentos)  || [];
 let listaAcciones      = leer(K.acciones)      || [];
 let listaIngresos      = leer(K.ingresos)      || [];
 let listaIngresosPresup = leer(K.ingresosPresup) || [];
+let listaPagosTarjeta  = leer(K.pagosTarjeta)  || [];
+let listaPagosTarjetaUSD = leer(K.pagosTarjetaUSD) || [];
 let listaPresupRubros    = leer(CF_NS+'f_presup_rubros_v1')    || {};
 let listaPresupRubrosUSD = leer(CF_NS+'f_presup_rubros_usd_v1') || {};
 let listaRubrosUSD       = leer(CF_NS+'f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
@@ -47,186 +47,7 @@ let filtroCorrientes = '';
 let filtroClase = '';
 let _syncTimer = null;
 let _syncPendiente = false;
-
-// ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
-async function syncSilencioso() { return; }
-async function syncAlSalir() {
-    // 1) Snapshot local — siempre
-    let snapOk = false;
-    try { cfHacerSnapshot(true); snapOk = true; } catch(e) { console.warn('Snapshot:', e); }
-
-    // 2) Backup en carpeta local — solo si está vinculada
-    let carpetaEstado = null; // null = no vinculada
-    if (window._cfFolderHandle) {
-        try {
-            const permOk = await cfVerificarPermiso(window._cfFolderHandle);
-            if (permOk) { await cfBackupEnCarpeta(window._cfFolderHandle); carpetaEstado = true; }
-            else carpetaEstado = false;
-        } catch(e) { carpetaEstado = false; }
-    }
-
-    // 3) Drive — deshabilitado a propósito en desarrollo, para no mezclar con el backup de producción
-    const driveLinea = '➖ Drive: deshabilitado en desarrollo (por diseño)';
-
-    const lineas = [
-        '📦 Backup al salir (DEV)',
-        '',
-        (snapOk ? '✅' : '❌') + ' Snapshot local: ' + (snapOk ? 'guardado' : 'error'),
-        (carpetaEstado === null ? '➖ Carpeta local: no vinculada' : (carpetaEstado ? '✅ Carpeta local: guardado' : '❌ Carpeta local: error')),
-        driveLinea
-    ];
-    alert(lineas.join('\n'));
-    window.close();
-}
 let _syncActivo = false;
-
-// Menú del botón único de Drive (Subir / Restaurar)
-function cfToggleDriveMenu() {
-    const existente = document.getElementById('drive-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('sync-badge');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='drive-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-190)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:190px;';
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-    m.appendChild(mkOpt('☁️ Subir backup ahora', driveSubir, false));
-    m.appendChild(mkOpt('📂 Restaurar backup...', driveRestaurar, true));
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú consolidado "⋯ Más" — reemplaza los botones sueltos de Drive/Gmail/Pendientes/
-// Ayuda/Local/IA/Cache para reducir la cantidad de elementos visibles en el header.
-function cfToggleMenuMas() {
-    const existente = document.getElementById('mas-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-mas');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='mas-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;right:'+Math.max(4, window.innerWidth-rect.right)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:230px;';
-
-    const mkLabel = (texto) => {
-        const l = document.createElement('div');
-        l.innerText = texto;
-        l.style.cssText = 'padding:8px 14px 4px;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;';
-        return l;
-    };
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-
-    // Estado de Drive calculado al vuelo (mismo criterio que syncSetBadge)
-    let estadoDrive = '⏳ Drive: sin sincronizar';
-    if (!gTokenCargarLocal() && !gToken) estadoDrive = '☁️ Drive: sin conectar';
-    else if (_syncActivo) estadoDrive = '☁️ Drive: sincronizando...';
-    else if (!_syncPendiente) estadoDrive = '✅ Drive: sincronizado';
-    const estadoEl = document.createElement('div');
-    estadoEl.innerText = estadoDrive;
-    estadoEl.style.cssText = 'padding:8px 14px;font-size:11px;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;';
-
-    m.appendChild(mkLabel('Backup y datos'));
-    m.appendChild(estadoEl);
-    m.appendChild(mkOpt('☁️ Subir backup a Drive', driveSubir, false));
-    m.appendChild(mkOpt('📂 Restaurar backup de Drive', driveRestaurar, false));
-    if (!cfEsMovil()) m.appendChild(mkOpt('📧 Gmail: login + chequear', cfGmailLoginYChequear, false));
-    m.appendChild(mkOpt('🔍 Revisar pendientes', cfRevisarPendientes, false));
-    m.appendChild(mkOpt('💾 Snapshots locales', cfMostrarSnapshots, false));
-    m.appendChild(mkOpt('🗑️ Limpiar caché y recargar', limpiarCache, false));
-
-    m.appendChild(mkLabel('Otros'));
-    m.appendChild(mkOpt('❓ Ayuda', () => window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes'), false));
-    m.appendChild(mkOpt('🤖 Consultar con IA', toggleAIPanel, false));
-
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú "⋯ Más" de la página Mes Actual — agrupa Informe Semanal, Exportar, Importar, PDF y Carpeta
-function cfToggleMenuMasMes() {
-    const existente = document.getElementById('mas-mes-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-mas-mes');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const anchoMenu = 220;
-    const left = Math.max(4, Math.min(rect.left, window.innerWidth - anchoMenu - 8));
-    const m = document.createElement('div'); m.id='mas-mes-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+left+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:'+anchoMenu+'px;';
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-    m.appendChild(mkOpt('📊 Informe Semanal', mostrarInformeSemanal, false));
-    m.appendChild(mkOpt('💾 Exportar', exportar, false));
-    m.appendChild(mkOpt('📥 Importar', () => document.getElementById('input-backup')?.click(), false));
-    m.appendChild(mkOpt('🖨️ PDF', () => window.print(), false));
-    m.appendChild(mkOpt('📂 Carpeta local', cfSeleccionarCarpeta, true));
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-mes-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú del botón "📅 Meses cerrados" — lista desplegable en vez de una tab por mes
-function cfToggleMesesMenu() {
-    const existente = document.getElementById('meses-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-meses-cerrados');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='meses-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-260)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:260px;max-height:360px;overflow-y:auto;';
-    const lista = [...historicoMeses].reverse();
-    if (!lista.length) {
-        const vacio = document.createElement('div');
-        vacio.innerText = 'Todavía no hay meses cerrados';
-        vacio.style.cssText = 'padding:14px;font-size:12px;color:#94a3b8;text-align:center;';
-        m.appendChild(vacio);
-    } else {
-        lista.forEach((mes, i) => {
-            const o = document.createElement('div');
-            o.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:13px;cursor:pointer;color:#1e293b;' + (i>0 ? 'border-top:1px solid #f1f5f9;' : '') + (tabActivo===mes.id ? 'background:#f0fdfa;font-weight:700;' : '');
-            o.onmouseover = () => { if (tabActivo!==mes.id) o.style.background = '#f8fafc'; };
-            o.onmouseout  = () => { if (tabActivo!==mes.id) o.style.background = ''; };
-            const nombreSpan = document.createElement('span');
-            nombreSpan.innerText = '🗂 ' + mes.nombre;
-            nombreSpan.onclick = () => { m.remove(); tabActivo = mes.id; renderTabs(); renderContenido(); };
-            nombreSpan.style.flex = '1';
-            const xSpan = document.createElement('span');
-            xSpan.innerText = '✕'; xSpan.style.cssText = 'color:#94a3b8;font-size:11px;padding-left:10px;';
-            xSpan.onclick = () => {
-                if (confirm('¿Eliminar "' + mes.nombre + '"?')) {
-                    historicoMeses = historicoMeses.filter(x=>x.id!==mes.id);
-                    if (tabActivo===mes.id) tabActivo = null;
-                    guardar(); m.remove(); renderTabs(); renderContenido();
-                }
-            };
-            o.appendChild(nombreSpan); o.appendChild(xSpan);
-            m.appendChild(o);
-        });
-    }
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('meses-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
 
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
 const CF_BKUP_KEY = CF_NS+'cf_backups';
@@ -403,12 +224,11 @@ function parseNum(str) {
 function syncSetBadge(estado) {
     const b = document.getElementById('sync-badge');
     if(!b) return;
-    const base='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;cursor:pointer;border:none;';
-    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText=base+'background:#dcfce7;color:#15803d;'; }
-    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText=base+'background:#fef9c3;color:#854d0e;'; }
-    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText=base+'background:#dbeafe;color:#1d4ed8;'; }
-    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText=base+'background:#fee2e2;color:#b91c1c;'; }
-    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText=base+'background:#f1f5f9;color:#64748b;'; }
+    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#15803d;cursor:default;'; }
+    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fef9c3;color:#854d0e;cursor:default;'; }
+    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dbeafe;color:#1d4ed8;cursor:default;'; }
+    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fee2e2;color:#b91c1c;cursor:default;'; }
+    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;'; }
 }
 function syncDebounce() {
     if(!gToken) gTokenCargarLocal();
@@ -422,6 +242,36 @@ function syncDebounce() {
 // ID del archivo sync único en Drive (para sobreescribir en lugar de crear nuevos)
 let _driveFileId = null;
 
+// ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
+async function syncSilencioso() { return; }
+async function syncAlSalir() {
+    // 1) Snapshot local — siempre
+    let snapOk = false;
+    try { cfHacerSnapshot(true); snapOk = true; } catch(e) { console.warn('Snapshot:', e); }
+
+    // 2) Backup en carpeta local — solo si está vinculada
+    let carpetaEstado = null; // null = no vinculada
+    if (window._cfFolderHandle) {
+        try {
+            const permOk = await cfVerificarPermiso(window._cfFolderHandle);
+            if (permOk) { await cfBackupEnCarpeta(window._cfFolderHandle); carpetaEstado = true; }
+            else carpetaEstado = false;
+        } catch(e) { carpetaEstado = false; }
+    }
+
+    // 3) Drive — deshabilitado a propósito en desarrollo, para no mezclar con el backup de producción
+    const driveLinea = '➖ Drive: deshabilitado en desarrollo (por diseño)';
+
+    const lineas = [
+        '📦 Backup al salir (DEV)',
+        '',
+        (snapOk ? '✅' : '❌') + ' Snapshot local: ' + (snapOk ? 'guardado' : 'error'),
+        (carpetaEstado === null ? '➖ Carpeta local: no vinculada' : (carpetaEstado ? '✅ Carpeta local: guardado' : '❌ Carpeta local: error')),
+        driveLinea
+    ];
+    alert(lineas.join('\n'));
+    window.close();
+}
 
 
 // ═══════════════════════════════════════════
@@ -572,6 +422,129 @@ function cfMostrarBannerReauthCarpeta(handle) {
     };
 }
 
+function cfToggleMesesMenu() {
+    const existente = document.getElementById('meses-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-meses-cerrados');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='meses-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-260)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:260px;max-height:360px;overflow-y:auto;';
+    const lista = [...historicoMeses].reverse();
+    if (!lista.length) {
+        const vacio = document.createElement('div');
+        vacio.innerText = 'Todavía no hay meses cerrados';
+        vacio.style.cssText = 'padding:14px;font-size:12px;color:#94a3b8;text-align:center;';
+        m.appendChild(vacio);
+    } else {
+        lista.forEach((mes, i) => {
+            const o = document.createElement('div');
+            o.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:13px;cursor:pointer;color:#1e293b;' + (i>0 ? 'border-top:1px solid #f1f5f9;' : '') + (tabActivo===mes.id ? 'background:#f0fdfa;font-weight:700;' : '');
+            o.onmouseover = () => { if (tabActivo!==mes.id) o.style.background = '#f8fafc'; };
+            o.onmouseout  = () => { if (tabActivo!==mes.id) o.style.background = ''; };
+            const nombreSpan = document.createElement('span');
+            nombreSpan.innerText = '🗂 ' + mes.nombre;
+            nombreSpan.onclick = () => { m.remove(); tabActivo = mes.id; renderTabs(); renderContenido(); };
+            nombreSpan.style.flex = '1';
+            const xSpan = document.createElement('span');
+            xSpan.innerText = '✕'; xSpan.style.cssText = 'color:#94a3b8;font-size:11px;padding-left:10px;';
+            xSpan.onclick = () => {
+                if (confirm('¿Eliminar "' + mes.nombre + '"?')) {
+                    historicoMeses = historicoMeses.filter(x=>x.id!==mes.id);
+                    if (tabActivo===mes.id) tabActivo = null;
+                    guardar(); m.remove(); renderTabs(); renderContenido();
+                }
+            };
+            o.appendChild(nombreSpan); o.appendChild(xSpan);
+            m.appendChild(o);
+        });
+    }
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('meses-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+function cfToggleMenuMas() {
+    const existente = document.getElementById('mas-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='mas-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;right:'+Math.max(4, window.innerWidth-rect.right)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:230px;';
+
+    const mkLabel = (texto) => {
+        const l = document.createElement('div');
+        l.innerText = texto;
+        l.style.cssText = 'padding:8px 14px 4px;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;';
+        return l;
+    };
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+
+    // Estado de Drive calculado al vuelo (mismo criterio que syncSetBadge)
+    let estadoDrive = '⏳ Drive: sin sincronizar';
+    if (!gTokenCargarLocal() && !gToken) estadoDrive = '☁️ Drive: sin conectar';
+    else if (_syncActivo) estadoDrive = '☁️ Drive: sincronizando...';
+    else if (!_syncPendiente) estadoDrive = '✅ Drive: sincronizado';
+    const estadoEl = document.createElement('div');
+    estadoEl.innerText = estadoDrive;
+    estadoEl.style.cssText = 'padding:8px 14px;font-size:11px;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;';
+
+    m.appendChild(mkLabel('Backup y datos'));
+    m.appendChild(estadoEl);
+    m.appendChild(mkOpt('☁️ Subir backup a Drive', driveSubir, false));
+    m.appendChild(mkOpt('📂 Restaurar backup de Drive', driveRestaurar, false));
+    if (!cfEsMovil()) m.appendChild(mkOpt('📧 Gmail: login + chequear', cfGmailLoginYChequear, false));
+    m.appendChild(mkOpt('🔍 Revisar pendientes', cfRevisarPendientes, false));
+    m.appendChild(mkOpt('💾 Snapshots locales', cfMostrarSnapshots, false));
+    m.appendChild(mkOpt('🗑️ Limpiar caché y recargar', limpiarCache, false));
+
+    m.appendChild(mkLabel('Otros'));
+    m.appendChild(mkOpt('❓ Ayuda', () => window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes'), false));
+    m.appendChild(mkOpt('🤖 Consultar con IA', toggleAIPanel, false));
+
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+function cfToggleMenuMasMes() {
+    const existente = document.getElementById('mas-mes-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas-mes');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const anchoMenu = 220;
+    const left = Math.max(4, Math.min(rect.left, window.innerWidth - anchoMenu - 8));
+    const m = document.createElement('div'); m.id='mas-mes-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+left+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:'+anchoMenu+'px;';
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+    m.appendChild(mkOpt('📊 Informe Semanal', mostrarInformeSemanal, false));
+    m.appendChild(mkOpt('💾 Exportar', exportar, false));
+    m.appendChild(mkOpt('📥 Importar', () => document.getElementById('input-backup')?.click(), false));
+    m.appendChild(mkOpt('🖨️ PDF', () => window.print(), false));
+    m.appendChild(mkOpt('📂 Carpeta local', cfSeleccionarCarpeta, true));
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-mes-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+
+
+
 document.addEventListener('DOMContentLoaded', () => {
     document.title = 'Control Financiero ' + APP_VERSION;
     // Pedir almacenamiento persistente: evita que el navegador evicte IndexedDB
@@ -579,6 +552,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navigator.storage && navigator.storage.persist) {
         navigator.storage.persist().catch(()=>{});
     }
+    // Reconecta/renueva el token de Drive en silencio al abrir (sin popup), para que
+    // al tocar Salir el backup a Drive sea instantáneo y no se pierda el permiso
+    // del navegador para cerrar la ventana con window.close().
+    driveGetToken(() => {});
     // Snapshot local al cerrar con X (beforeunload — síncrono, siempre funciona)
     window.addEventListener('beforeunload', () => { cfHacerSnapshot(false); });
     // Snapshot + intento Drive al ocultar pestaña
@@ -592,7 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTabs();
     renderContenido();
     cfRestaurarCarpeta();
-    // Módulo Gmail: chequear si hay sesión activa (el botón de login vive ahora en el menú "⋯ Más")
+    // Módulo Gmail: chequear mails de Santander automáticamente en PC
     setTimeout(() => { cfGmailChequear(); }, 800);
 });
 
@@ -616,7 +593,7 @@ function renderTabs() {
     mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
-    // Botón único de Drive (fusiona badge de estado + subir + restaurar) — botón Salir queda aparte, sin tocar
+    // Badge sync + botón Salir — siempre visible en la tab bar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
     // Elemento oculto: mantiene compatibilidad con syncSetBadge() (usado por el resto del código)
@@ -983,7 +960,7 @@ function render() {
     if(sRubro){ sRubro.innerHTML=''; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sRubro,r,r)); }
     const sSrvRubro=document.getElementById('srv-rubro');
     if(sSrvRubro){ sSrvRubro.innerHTML='<option value="">— Sin rubro —</option>'; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sSrvRubro,r,r)); }
-    listaRubros.forEach(r=>{
+    [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>{
         const b=el('div','rubro-badge'); 
         const col=colorRubro(r);
         b.style.cssText='border-left:4px solid '+col+';background:'+col+'18;';
@@ -1226,7 +1203,7 @@ function renderPresupRubros() {
 }
 function actualizarPresupRubro(inp) {
     const r = inp.getAttribute('data-rubro');
-    const v = parseFloat(inp.value)||0;
+    const v = parseFloat(inp.value.replace(/\./g,''))||0;
     if(v>0) listaPresupRubros[r]=v; else delete listaPresupRubros[r];
     guardar(); renderPresupRubros();
     if(tabActivo==='presupuesto') renderContenido();
@@ -1576,7 +1553,7 @@ function nuevoMes() {
         if(!(listaPresupRubrosUSD[r]>0) && gastadoMesUSD[r]>0) listaPresupRubrosUSD[r]=Math.round(gastadoMesUSD[r]*100)/100;
     });
     // Limpiar pesos
-    listaServicios.forEach(s=>{ s.pagado=0; s.fPago=''; });
+    listaServicios.forEach(s=>{ s.pagado=0; s.fPago=''; if(!s.esCuota) s.fVto=''; });
     listaCorrientes=listaCorrientes.filter(c=>!c.fechaPago);
     listaTransferencias=[];
     // Generar cuotas
@@ -1588,7 +1565,7 @@ function nuevoMes() {
     listaCorrientesUSD.forEach(c=>{ if(mDU[c.medioPagoId]!==undefined) mDU[c.medioPagoId]+=c.monto*(c.esIngreso?-1:1); });
     listaTarjetasUSD.forEach(t=>{ t.saldo=Math.round((t.saldo+(mDU[t.id]||0))*100)/100; });
     // Limpiar USD
-    listaServiciosUSD.forEach(s=>{ s.pagado=0; s.fPago=''; });
+    listaServiciosUSD.forEach(s=>{ s.pagado=0; s.fPago=''; if(!s.esCuota) s.fVto=''; });
     listaCorrientesUSD=[];
     listaTransferenciasUSD=[];
     guardar(); renderTabs(); renderContenido();
@@ -1666,7 +1643,7 @@ function modalVencimientos() {
     }
     if(cuotasTerminando.length){
         itemsHtml += '<div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin:'+(proximos.length?'16px':'0')+'px 0 8px;">⚡ Cuotas por terminar</div>';
-        itemsHtml += cuotasTerminando.map(c=>{ const rest=c.totalCuotas-c.cuotaActual; const lbl=rest===0?'Última cuota':rest===1?'Quedan 2 cuotas':'Quedan '+rest+' cuotas'; return '<div class="vto-item proximo"><div><div class="vto-nombre">'+c.descripcion+'</div><div class="vto-sub">'+fmt(c.montoCuota)+'/mes · Cuota '+c.cuotaActual+' de '+c.totalCuotas+'</div></div><div class="vto-fecha"><div class="vto-dias" style="background:#f3e8ff;color:#7c3aed;">'+lbl+'</div></div></div>'; }).join('');
+        itemsHtml += cuotasTerminando.map(c=>{ const rest=c.totalCuotas-c.cuotaActual; const lbl=rest===0?'Última cuota':rest===1?'Quedan 2 cuotas':'Quedan '+rest+' cuotas'; return '<div class="vto-item cuota"><div><div class="vto-nombre">'+c.descripcion+'</div><div class="vto-sub">'+fmt(c.montoCuota)+'/mes · Cuota '+c.cuotaActual+' de '+c.totalCuotas+'</div></div><div class="vto-fecha"><div class="vto-dias" style="background:#f3e8ff;color:#7c3aed;">'+lbl+'</div></div></div>'; }).join('');
     }
     const ov=el('div','modal-overlay no-print'); ov.id='modal-vto';
     const titulo = proximos.length && cuotasTerminando.length ? 'Vencimientos y cuotas próximas' : proximos.length ? 'Vencimientos en los próximos 5 días hábiles' : 'Cuotas por terminar';
@@ -2318,8 +2295,9 @@ function buildPresupuesto() {
         const safeR = r.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
         card += '<div style="display:flex;align-items:center;gap:6px;">';
         card += '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;">Límite $</span>';
-        card += '<input type="number" min="0" step="1" value="'+(pres||'')+'" placeholder="Sin límite" ';
+        card += '<input type="text" inputmode="numeric" value="'+(pres?pres.toLocaleString('es-AR'):'')+'" placeholder="Sin límite" ';
         card += 'style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:white;color:#1e293b;" ';
+        card += 'oninput="this.value=this.value.replace(/\\D/g,\'\').replace(/\\B(?=(\\d{3})+(?!\\d))/g,\'.\')" ';
         card += 'data-rubro="'+safeR+'" onchange="actualizarPresupRubro(this)" onblur="actualizarPresupRubro(this)">';
         card += '</div>';
         card += '</div>';
@@ -3138,9 +3116,9 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.77-dev1';
+const APP_VERSION = 'v3.7.71-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
-const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly'
+const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
 let _cfFolderId = null;
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
@@ -3162,6 +3140,7 @@ function gTokenCargarLocal() {
         const t = localStorage.getItem(GTOKEN_KEY);
         const exp = parseInt(localStorage.getItem(GTOKEN_EXP_KEY)||'0');
         const scopeV = localStorage.getItem(GTOKEN_SCOPE_KEY);
+        // Token viejo (scope appDataFolder) no sirve para la carpeta visible: se descarta y se re-pide consentimiento
         if(t && exp && Date.now() < exp - 60000 && scopeV === GTOKEN_SCOPE_VERSION) { gToken = t; return true; }
     } catch(e){}
     return false;
@@ -3171,6 +3150,10 @@ function gTokenLimpiar() {
     try { localStorage.removeItem(GTOKEN_KEY); localStorage.removeItem(GTOKEN_EXP_KEY); localStorage.removeItem(GTOKEN_SCOPE_KEY); } catch(e){}
 }
 
+// Busca (o crea) la carpeta visible "ControlFinanciero" en el Drive del usuario
+// Busca (solo lectura) la carpeta visible "ControlFinanciero" en el Drive del usuario.
+// A diferencia de producción, DEV nunca crea la carpeta: si no existe todavía,
+// significa que no se subió ningún backup real desde producción.
 function driveEnsureFolder(token, cb) {
     if(_cfFolderId){ cb(_cfFolderId); return; }
     const q = encodeURIComponent(`name='${CF_DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -3216,7 +3199,7 @@ function _driveSubir_DISABLED_ORIGINAL() {
     driveGetToken(token=>{
         const a=new Date(), ts=a.getFullYear()+String(a.getMonth()+1).padStart(2,'0')+String(a.getDate()).padStart(2,'0')+'_'+String(a.getHours()).padStart(2,'0')+String(a.getMinutes()).padStart(2,'0');
         const nombre='backup_finanzas_'+ts+'.json';
-        const data=JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos});
+        const data=JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos,listaIngresosPresup});
         const meta=JSON.stringify({name:nombre,parents:['appDataFolder']});
         const form=new FormData();
         form.append('metadata',new Blob([meta],{type:'application/json'}));
@@ -3232,7 +3215,7 @@ function driveRestaurar() {
             const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
             fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime+desc&pageSize=50`,{headers:{Authorization:'Bearer '+token}})
             .then(r=>r.json()).then(data=>{
-                // Listar todos los backups: manuales + autosync (de producción)
+                // Listar todos los backups: manuales + autosync
                 const arch=(data.files||[]).filter(f=>f.name.startsWith('backup_'));
                 mostrarModalDrive(arch,token);
             }).catch(e=>{alert('Error al listar Drive: '+e.message);gTokenLimpiar();});
@@ -4187,7 +4170,7 @@ function limpiarCache() {
 
 
 // ════════════════════════════════════════════════════
-//  MÓDULO GMAIL API · Control Financiero v2
+//  MÓDULO GMAIL API · Control Financiero Producción
 //  Detección automática mails Santander
 // ════════════════════════════════════════════════════
 
@@ -4232,9 +4215,8 @@ function cfGmailExtraerTexto(payload) {
                 return cfGmailDecodeBody(part.body.data);
         }
         for (const part of payload.parts) {
-            if (part.mimeType === 'text/html' && part.body && part.body.data) {
+            if (part.mimeType === 'text/html' && part.body && part.body.data)
                 return cfGmailDecodeBody(part.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-            }
             if (part.parts) { const sub = cfGmailExtraerTexto(part); if (sub) return sub; }
         }
     }
@@ -4245,46 +4227,26 @@ function cfParsearMailSantander(texto) {
     if (!texto) return null;
     const esSantander = /santander/i.test(texto) && /monto|consumo|d.?bito/i.test(texto);
     if (!esSantander) return null;
-
     const t = texto.replace(/\*/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const resultado = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Tarjeta', tipo: 'gasto' };
-
     const rUSD = /Monto\s*(?:\n\s*)?U\$S\s?([\d.,]+)/i.exec(t);
     const rARS = /Monto\s*(?:\n\s*)?\$([\d.,]+)/i.exec(t);
     if (rUSD) { resultado.moneda = 'USD'; resultado.monto = parseFloat(rUSD[1].replace(/\./g,'').replace(',','.')); }
     else if (rARS) { resultado.moneda = 'ARS'; resultado.monto = parseFloat(rARS[1].replace(/\./g,'').replace(',','.')); }
-
     const rCuotas  = /Cuotas\s*(?:\n\s*)?(\d+)/i.exec(t);
     if (rCuotas) resultado.cuotas = parseInt(rCuotas[1]);
-
     const rComercio = /Comercio\s*(?:\n\s*)?([A-ZÁÉÍÓÚÑ0-9 .*\-&]+)/i.exec(t);
     if (rComercio) resultado.comercio = rComercio[1].trim();
-
     const rFecha = /Fecha\s*(?:\n\s*)?(\d{2})\/(\d{2})\/(\d{4})/i.exec(t);
     if (rFecha) resultado.fecha = `${rFecha[3]}-${rFecha[2]}-${rFecha[1]}`;
-
     const rHora = /Hora\s*(?:\n\s*)?(\d{2}:\d{2})/i.exec(t);
     if (rHora) resultado.hora = rHora[1];
-
     const rTarjeta = /terminada en (\d{4})/i.exec(t);
     if (rTarjeta) resultado.tarjeta = rTarjeta[1];
-
     if (/american express|amex/i.test(t)) resultado.tipo_tarjeta = 'Amex';
     else if (/visa/i.test(t)) resultado.tipo_tarjeta = 'Visa Crédito';
-
     resultado.tipo = (resultado.cuotas && resultado.cuotas > 1) ? 'cuota' : 'gasto';
     return resultado;
-}
-
-const CF_MP_TRANSFER_RUBROS = {
-    'carlos alfredo irrera': 'Sodero',
-    'miguel angel torres': 'Jardinero',
-    'edgardo sebastian soria': 'Delivery',
-    'elvira reina tito': 'Carnicería / Verdulería'
-};
-
-function cfNormalizarNombre(s) {
-    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
 function cfParsearMailMercadoPago(texto) {
@@ -4306,6 +4268,17 @@ function cfParsearMailMercadoPago(texto) {
     else if (/santander/i.test(t)) resultado.tipo_tarjeta = 'Santander Crédito';
     resultado.tipo = (resultado.cuotas && resultado.cuotas > 1) ? 'cuota' : 'gasto';
     return resultado;
+}
+
+const CF_MP_TRANSFER_RUBROS = {
+    'carlos alfredo irrera': 'Sodero',
+    'miguel angel torres': 'Jardinero',
+    'edgardo sebastian soria': 'Delivery',
+    'elvira reina tito': 'Carnicería / Verdulería'
+};
+
+function cfNormalizarNombre(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
 function cfGmailHeader(payload, nombre) {
@@ -4358,17 +4331,14 @@ function cfParsearMailMercadoPagoTransferencia(texto) {
 
 async function cfGmailBuscarGastos(token) {
     const query = encodeURIComponent(CF_SANTANDER_QUERY);
-    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=10`;
-    const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const resp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=20`, { headers: { Authorization: 'Bearer ' + token } });
     if (!resp.ok) { console.error('[CF Gmail] Error:', resp.status); return []; }
     const data = await resp.json();
     if (!data.messages || !data.messages.length) return [];
-
     const gastos = [];
     for (const msg of data.messages) {
         if (cfGmailIsProcessed(msg.id)) continue;
-        const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
-            { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
+        const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
         const texto = cfGmailExtraerTexto(det.payload);
         let datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
 
@@ -4382,7 +4352,7 @@ async function cfGmailBuscarGastos(token) {
                     const b64 = await cfGmailDescargarAdjunto(token, msg.id, adj.attachmentId);
                     if (b64) {
                         datos = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Transferencia', tipo: 'gasto', origen: 'Comprobante MP' };
-                        const rubro = CF_MP_TRANSFER_RUBROS[cfNormalizarNombre(texto)]; // por si el cuerpo trae texto reconocible
+                        const rubro = CF_MP_TRANSFER_RUBROS[cfNormalizarNombre(texto)];
                         if (rubro) datos.rubroSugerido = rubro;
                         datos._attachmentDataUrl = `data:${adj.mimeType || 'image/jpeg'};base64,${b64}`;
                         datos._attachmentEsPdf = /pdf/i.test(adj.mimeType || '');
@@ -4403,33 +4373,14 @@ async function cfGmailBuscarGastos(token) {
     return gastos;
 }
 
-let cfGmailQueue = [];
-let cfGmailIdx   = 0;
-
 function cfGmailYaRegistrado(datos) {
-    // Verificar por contenido: mismo monto + misma fecha + mismo comercio aproximado
     const needle = (datos.comercio || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 10);
     const fecha  = datos.fecha || '';
     const monto  = datos.monto || 0;
-
-    const enARS = listaCorrientes.some(c =>
-        Math.abs(c.monto - monto) < 0.01 &&
-        c.fechaPago === fecha &&
-        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
-    );
-    const enUSD = listaCorrientesUSD.some(c =>
-        Math.abs(c.monto - monto) < 0.01 &&
-        c.fechaPago === fecha &&
-        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
-    );
-    const enServ = listaServicios.some(s =>
-        Math.abs((s.pagado || 0) - monto) < 0.01 &&
-        s.fPago === fecha
-    );
-    const enServUSD = listaServiciosUSD.some(s =>
-        Math.abs((s.pagado || 0) - monto) < 0.01 &&
-        s.fPago === fecha
-    );
+    const enARS = listaCorrientes.some(c => Math.abs(c.monto - monto) < 0.01 && c.fechaPago === fecha && (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle));
+    const enUSD = listaCorrientesUSD.some(c => Math.abs(c.monto - monto) < 0.01 && c.fechaPago === fecha && (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle));
+    const enServ = listaServicios.some(s => Math.abs((s.pagado || 0) - monto) < 0.01 && s.fPago === fecha);
+    const enServUSD = listaServiciosUSD.some(s => Math.abs((s.pagado || 0) - monto) < 0.01 && s.fPago === fecha);
     return enARS || enUSD || enServ || enServUSD;
 }
 
@@ -4438,7 +4389,7 @@ function cfBuscarServicioMatch(comercio, esUSD) {
     if (!comercio || !lista || !lista.length) return null;
     const needle = comercio.toLowerCase().replace(/[^a-z0-9]/g, '');
     return lista.find(s => {
-        if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false; // ya pagado
+        if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false;
         const hay = (s.nombre || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         if (needle.length >= 4 && hay.includes(needle.substring(0, Math.min(needle.length, 8)))) return true;
         if (hay.length >= 4 && needle.includes(hay.substring(0, Math.min(hay.length, 8)))) return true;
@@ -4446,11 +4397,12 @@ function cfBuscarServicioMatch(comercio, esUSD) {
     }) || null;
 }
 
+let cfGmailQueue = [];
+let cfGmailIdx   = 0;
+
 function cfGmailMostrarSiguiente() {
     if (cfGmailIdx >= cfGmailQueue.length) return;
     const datos = cfGmailQueue[cfGmailIdx];
-
-    // Saltar si ya fue registrado por contenido (evita duplicados por reenvío manual)
     if (cfGmailYaRegistrado(datos)) {
         console.log('[CF Gmail] Duplicado detectado, saltando:', datos.comercio, datos.fecha);
         if (datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
@@ -4458,7 +4410,6 @@ function cfGmailMostrarSiguiente() {
         if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 200);
         return;
     }
-
     const servicioMatch = cfBuscarServicioMatch(datos.comercio, datos.moneda === 'USD');
     if (servicioMatch) {
         cfAbrirModalPagoServicio(datos, servicioMatch);
@@ -4725,14 +4676,11 @@ function elimPagoTarjetaUSD(id) {
 function cfAbrirModalPagoServicio(datos, servicio) {
     const prev = document.getElementById('cf-gmail-overlay');
     if (prev) prev.remove();
-
     const overlay = document.createElement('div');
     overlay.id = 'cf-gmail-overlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
-
     const fechaHoy = cfFechaLocal();
     const montoPago = datos.monto ? datos.monto.toFixed(2) : (servicio.presupuesto || 0).toFixed(2);
-
     overlay.innerHTML = `
     <div style="background:#1e293b;border-radius:14px;width:100%;max-width:420px;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
@@ -4745,119 +4693,103 @@ function cfAbrirModalPagoServicio(datos, servicio) {
             <div style="font-size:11px;color:#64748b;margin-top:2px;">Presupuesto: $${(servicio.presupuesto||0).toLocaleString('es-AR')} · Pagado: $${(servicio.pagado||0).toLocaleString('es-AR')}</div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto pagado</label>
-                <input type="number" id="cf-gm-srv-monto" step="0.01" value="${montoPago}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha de pago</label>
-                <input type="date" id="cf-gm-srv-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto pagado</label>
+            <input type="number" id="cf-gm-srv-monto" step="0.01" value="${montoPago}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha de pago</label>
+            <input type="date" id="cf-gm-srv-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">
-            Comercio detectado: <span style="color:#94a3b8;font-weight:600;">${datos.comercio}</span> · 
-            ${datos.tipo_tarjeta} terminada en ${datos.tarjeta}
-        </div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">Comercio: <span style="color:#94a3b8;font-weight:600;">${datos.comercio}</span> · ${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
             <button onclick="cfConfirmarPagoServicio('${servicio.id}')" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#0f766e;color:white;cursor:pointer;">✓ Asentar pago</button>
         </div>
         <div style="display:flex;gap:8px;">
-            <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Gasto corriente</button>
-            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
-            <button onclick="cfDescartarGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:11px;font-weight:600;border:1.5px solid #7f1d1d;background:#0f172a;color:#fca5a5;cursor:pointer;">🗑️ Descartar</button>
+            <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Registrar como gasto corriente</button>
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
         </div>
-        <div style="font-size:10.5px;color:#64748b;text-align:center;margin-top:8px;">Cancelar: vuelve a aparecer después · Descartar: no se vuelve a mostrar</div>
+        <button onclick="cfDescartarDefinitivo()" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;font-size:11.5px;font-weight:600;border:1px dashed #64748b;background:transparent;color:#94a3b8;cursor:pointer;">🚫 Descartar definitivamente (no volver a mostrar este mail)</button>
     </div>`;
-
     document.body.appendChild(overlay);
 }
 
 function cfConfirmarPagoServicio(servicioId) {
     const monto = parseFloat(document.getElementById('cf-gm-srv-monto').value);
     const fecha = document.getElementById('cf-gm-srv-fecha').value;
-
     if (isNaN(monto) || monto <= 0) { alert('El monto no es válido.'); return; }
-
     let s = listaServicios.find(x => x.id === servicioId);
     let esUSD = false;
     if (!s) { s = listaServiciosUSD.find(x => x.id === servicioId); esUSD = true; }
     if (!s) { alert('Servicio no encontrado.'); return; }
-
     s.pagado = monto;
     s.fPago  = fecha;
     guardar();
     if (esUSD) { if (typeof renderDolares === 'function') renderDolares(); }
     else { render(); }
-
     const datos = cfGmailQueue[cfGmailIdx];
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
     const ov = document.getElementById('cf-gmail-overlay');
     if (ov) ov.remove();
-
     cfGmailIdx++;
     if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 600);
 }
 
 function cfModalPagoACorriente() {
-    // El usuario prefiere registrar como gasto corriente aunque haya match
     const datos = cfGmailQueue[cfGmailIdx];
     cfAbrirModalGasto(datos);
+}
+
+function cfCerrarModalGasto() {
+    // No marcamos como procesado: al cancelar, el mail debe poder reaparecer
+    // en el próximo chequeo (ej. tras corregir el nombre del comercio en un fijo).
+    const ov = document.getElementById('cf-gmail-overlay');
+    if (ov) ov.remove();
+    cfGmailIdx++;
+    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
+}
+
+function cfDescartarDefinitivo() {
+    // A diferencia de Cancelar: acá sí marcamos el mail como procesado,
+    // para que este mail puntual no vuelva a aparecer nunca más.
+    const datos = cfGmailQueue[cfGmailIdx];
+    if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
+    const ov = document.getElementById('cf-gmail-overlay');
+    if (ov) ov.remove();
+    cfGmailIdx++;
+    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
 }
 
 function cfAbrirModalGasto(datos) {
     const prev = document.getElementById('cf-gmail-overlay');
     if (prev) prev.remove();
-
-    // Seleccionar lista de tarjetas según moneda
     const esUSD = datos.moneda === 'USD';
     const listaTarjetasActual = esUSD ? listaTarjetasUSD : listaTarjetas;
-
     // Selección de lista de bancos/cuentas según moneda
     const listaBancosActual = esUSD ? listaCuentasUSD : listaBancos;
 
-    // Detectar tarjeta → medioPagoId
     let medioPagoId = '';
     if (datos.tipo_tarjeta) {
         const tipo = datos.tipo_tarjeta.toLowerCase();
         const num  = datos.tarjeta || '';
         if (tipo.includes('transferencia')) {
-            // Transferencias / comprobantes MP: preferir cuenta Mercado Pago si existe
             const cuentaMP = listaBancosActual.find(b => /mercado\s*pago/i.test(b.nombre));
             if (cuentaMP) medioPagoId = cuentaMP.id;
         } else {
             let tarjeta = listaTarjetasActual.find(t => num && t.nombre && t.nombre.includes(num));
             if (!tarjeta) {
-                if (tipo.includes('amex') || tipo.includes('american'))
-                    tarjeta = listaTarjetasActual.find(t => /amex|american/i.test(t.nombre));
-                else if (tipo.includes('visa'))
-                    tarjeta = listaTarjetasActual.find(t => /visa/i.test(t.nombre));
+                if (tipo.includes('amex') || tipo.includes('american')) tarjeta = listaTarjetasActual.find(t => /amex|american/i.test(t.nombre));
+                else if (tipo.includes('visa')) tarjeta = listaTarjetasActual.find(t => /visa/i.test(t.nombre));
             }
             if (!tarjeta) tarjeta = listaTarjetasActual.find(t => /santander/i.test(t.nombre));
             if (tarjeta) medioPagoId = tarjeta.id;
         }
     }
-
-    // Opciones de medio de pago: bancos/cuentas primero, luego tarjetas
-    const opsBancosMedio = listaBancosActual.map(b =>
-        `<option value="${b.id}" ${b.id === medioPagoId ? 'selected' : ''}>🏦 ${b.nombre}</option>`
-    ).join('');
-    const opsTarjetas = listaTarjetasActual.map(t =>
-        `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`
-    ).join('');
-
-    // Opciones de rubros según moneda
+    const opsBancosMedio = listaBancosActual.map(b => `<option value="${b.id}" ${b.id === medioPagoId ? 'selected' : ''}>🏦 ${b.nombre}</option>`).join('');
+    const opsTarjetas = listaTarjetasActual.map(t => `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`).join('');
     const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
-    const opsRubros = listaRubrosActual.map(r =>
-        `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`
-    ).join('');
-
+    const opsRubros = listaRubrosActual.map(r => `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`).join('');
     const fechaHoy = cfFechaLocal();
-
-
     const overlay = document.createElement('div');
     overlay.id = 'cf-gmail-overlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
-
     overlay.innerHTML = `
     <div style="background:#1e293b;border-radius:14px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
@@ -4874,75 +4806,38 @@ function cfAbrirModalGasto(datos) {
         <div style="font-size:11px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">✍️ Completá monto y rubro mirando el comprobante.</div>
         ` : (!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto</label>
-                <input type="number" id="cf-gm-monto" step="0.01" value="${datos.monto ? datos.monto.toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Moneda</label>
-                <select id="cf-gm-moneda" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                    <option value="ARS" ${datos.moneda==='ARS'?'selected':''}>$ ARS</option>
-                    <option value="USD" ${datos.moneda==='USD'?'selected':''}>U$S USD</option>
-                </select>
-            </div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto</label>
+            <input type="number" id="cf-gm-monto" step="0.01" value="${datos.monto ? datos.monto.toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Moneda</label>
+            <select id="cf-gm-moneda" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+                <option value="ARS" ${datos.moneda==='ARS'?'selected':''}>$ ARS</option>
+                <option value="USD" ${datos.moneda==='USD'?'selected':''}>U$S USD</option>
+            </select></div>
         </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Comercio / Detalle</label>
-            <input type="text" id="cf-gm-detalle" value="${datos.comercio || ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            ${datos.tarjeta ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>` : `<div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta}</div>`}
-        </div>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Comercio / Detalle</label>
+        <input type="text" id="cf-gm-detalle" value="${datos.comercio || ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tarjeta ? `${datos.tipo_tarjeta} terminada en ${datos.tarjeta}` : datos.tipo_tarjeta}</div></div>
         <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha</label>
-                <input type="date" id="cf-gm-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Cuotas</label>
-                <input type="number" id="cf-gm-cuotas" min="1" max="72" value="${datos.cuotas || 1}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha</label>
+            <input type="date" id="cf-gm-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Cuotas</label>
+            <input type="number" id="cf-gm-cuotas" min="1" max="72" value="${datos.cuotas || 1}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
         </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Rubro</label>
-            <select id="cf-gm-rubro" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                <option value="">— Seleccioná rubro —</option>
-                ${opsRubros}
-            </select>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Rubro</label>
+        <select id="cf-gm-rubro" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            <option value="">— Seleccioná rubro —</option>${opsRubros}
+        </select></div>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Medio de pago</label>
+        <select id="cf-gm-medio" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            <option value="">— Seleccioná medio de pago —</option>${opsBancosMedio}${opsTarjetas}
+        </select></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#f1f5f9;cursor:pointer;">✕ Cancelar</button>
+            <button onclick="cfConfirmarGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#4f46e5;color:white;cursor:pointer;">✓ Registrar gasto</button>
         </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Medio de pago</label>
-            <select id="cf-gm-medio" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                <option value="">— Seleccioná medio de pago —</option>
-                ${opsBancosMedio}
-                ${opsTarjetas}
-            </select>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:16px;">
-            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:13px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#f1f5f9;cursor:pointer;">✕ Cancelar</button>
-            <button onclick="cfDescartarGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:13px;font-weight:700;border:1.5px solid #7f1d1d;background:#0f172a;color:#fca5a5;cursor:pointer;">🗑️ Descartar</button>
-            <button onclick="cfConfirmarGasto()" style="flex:1.3;padding:12px;border-radius:10px;font-size:13px;font-weight:700;border:none;background:#4f46e5;color:white;cursor:pointer;">✓ Registrar</button>
-        </div>
-        <div style="font-size:10.5px;color:#64748b;text-align:center;margin-top:8px;">Cancelar: vuelve a aparecer después · Descartar: no se vuelve a mostrar</div>
+        <button onclick="cfDescartarDefinitivo()" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;font-size:11.5px;font-weight:600;border:1px dashed #64748b;background:transparent;color:#94a3b8;cursor:pointer;">🚫 Descartar definitivamente (no volver a mostrar este mail)</button>
     </div>`;
-
     document.body.appendChild(overlay);
-}
-
-function cfDescartarGasto() {
-    const datos = cfGmailQueue[cfGmailIdx];
-    if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
-    const ov = document.getElementById('cf-gmail-overlay');
-    if (ov) ov.remove();
-    cfGmailIdx++;
-    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
-}
-
-function cfCerrarModalGasto() {
-    // No marcamos como procesado: al cancelar, el mail debe poder reaparecer
-    // en el próximo chequeo (ej. tras corregir el nombre del comercio en un fijo).
-    const ov = document.getElementById('cf-gmail-overlay');
-    if (ov) ov.remove();
-    cfGmailIdx++;
-    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
 }
 
 function cfConfirmarGasto() {
@@ -4953,27 +4848,18 @@ function cfConfirmarGasto() {
     const cuotas  = parseInt(document.getElementById('cf-gm-cuotas').value) || 1;
     const rubro   = document.getElementById('cf-gm-rubro').value;
     const medioId = document.getElementById('cf-gm-medio').value;
-
-    if (!detalle)           { alert('Ingresá el detalle del gasto.'); return; }
+    if (!detalle)               { alert('Ingresá el detalle del gasto.'); return; }
     if (isNaN(monto)||monto<=0) { alert('El monto no es válido.'); return; }
-    if (!rubro)             { alert('Seleccioná un rubro.'); return; }
-    if (!medioId)           { alert('Seleccioná el medio de pago.'); return; }
-
+    if (!rubro)                 { alert('Seleccioná un rubro.'); return; }
+    if (!medioId)               { alert('Seleccioná el medio de pago.'); return; }
     const detalleF = moneda === 'USD' ? `[USD ${monto.toFixed(2)}] ${detalle}` : detalle;
     const notasCuota = cuotas > 1 ? ` (${cuotas} cuotas)` : '';
-
     if (moneda === 'USD') {
-        listaCorrientesUSD.push({
-            id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
-            monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
-        });
+        listaCorrientesUSD.push({ id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota, monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M' });
         const cuentaUSD = listaCuentasUSD.find(c => c.id === medioId);
         if (cuentaUSD) cuentaUSD.saldo -= monto;
     } else {
-        listaCorrientes.push({
-            id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
-            monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
-        });
+        listaCorrientes.push({ id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota, monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M' });
         // El gasto ya nace "pagado" (fechaPago seteada), así que no dispara el toggle
         // prev/next que descuenta saldo en la tabla — lo hacemos acá directo.
         if (esCuentaLiq(medioId)) {
@@ -4981,16 +4867,13 @@ function cfConfirmarGasto() {
             if (bk) bk.saldo -= monto;
         }
     }
-
     guardar();
     if (moneda === 'USD') { if (typeof renderDolares === 'function') renderDolares(); }
     else { render(); }
-
     const datos = cfGmailQueue[cfGmailIdx];
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
     const ov = document.getElementById('cf-gmail-overlay');
     if (ov) ov.remove();
-
     cfGmailIdx++;
     if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 600);
 }
