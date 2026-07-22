@@ -8,13 +8,16 @@ const K = {
     rubros:CF_NS+'f_r_v2_2', bancos:CF_NS+'f_bancos_v2_4', tarjetas:CF_NS+'f_tarjetas_v2_4',
     servicios:CF_NS+'f_servicios_v2_4', corrientes:CF_NS+'f_corrientes_v2_4',
     transferencias:CF_NS+'f_transferencias_v3', cuotas:CF_NS+'f_cuotas_v3', historico:CF_NS+'f_historico_v3',
+    transferenciasUSD:CF_NS+'f_transferenciasUSD_v1',
     cuentasUSD:CF_NS+'f_cuentasUSD_v3', tarjetasUSD:CF_NS+'f_tarjetasUSD_v3',
     serviciosUSD:CF_NS+'f_serviciosUSD_v3', corrientesUSD:CF_NS+'f_corrientesUSD_v3',
     tipoCambio:CF_NS+'f_tipoCambio_v3',
     instrumentos:CF_NS+'f_instrumentos_v1',
     acciones:CF_NS+'f_acciones_v1',
     ingresos:CF_NS+'f_ingresos_v1',
-    pagosTarjeta:CF_NS+'f_pagosTarjeta_v1'
+    ingresosPresup:CF_NS+'f_ingresosPresup_v1',
+    pagosTarjeta:CF_NS+'f_pagosTarjeta_v1',
+    pagosTarjetaUSD:CF_NS+'f_pagosTarjetaUSD_v1'
 };
 let listaRubros        = leer(K.rubros)        || ["Carnicería / Verdulería","Supermercado / Almacén","Gastos Auto / Combustible"];
 let listaBancos        = leer(K.bancos)        || [];
@@ -22,205 +25,30 @@ let listaTarjetas      = leer(K.tarjetas)      || [];
 let listaServicios     = leer(K.servicios)     || [];
 let listaCorrientes    = leer(K.corrientes)    || [];
 let listaTransferencias= leer(K.transferencias)|| [];
+let listaTransferenciasUSD = leer(K.transferenciasUSD) || [];
 let listaCuotas        = leer(K.cuotas)        || [];
 let historicoMeses     = leer(K.historico)     || [];
 let listaCuentasUSD    = leer(K.cuentasUSD)    || [];
 let listaTarjetasUSD   = leer(K.tarjetasUSD)   || [];
 let listaServiciosUSD  = leer(K.serviciosUSD)  || [];
 let listaCorrientesUSD = leer(K.corrientesUSD) || [];
-let listaPagosTarjeta  = leer(K.pagosTarjeta)  || [];
 let tipoCambio         = leer(K.tipoCambio)    || 1200;
 let listaInstrumentos  = leer(K.instrumentos)  || [];
 let listaAcciones      = leer(K.acciones)      || [];
 let listaIngresos      = leer(K.ingresos)      || [];
+let listaIngresosPresup = leer(K.ingresosPresup) || [];
+let listaPagosTarjeta  = leer(K.pagosTarjeta)  || [];
+let listaPagosTarjetaUSD = leer(K.pagosTarjetaUSD) || [];
 let listaPresupRubros    = leer(CF_NS+'f_presup_rubros_v1')    || {};
 let listaPresupRubrosUSD = leer(CF_NS+'f_presup_rubros_usd_v1') || {};
 let listaRubrosUSD       = leer(CF_NS+'f_rubros_usd_v1')        || ['Electrónica','Servicios Online','Transferencias','Varios USD'];
 let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
+let reportesMesId = null; // null = Mes Actual; si no, id de un mes en historicoMeses — permite correr Reportes a demanda sobre un mes cerrado
 let _syncTimer = null;
 let _syncPendiente = false;
-
-// ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
-async function syncSilencioso() { return; }
-async function syncAlSalir() {
-    // 1) Snapshot local — siempre
-    let snapOk = false;
-    try { cfHacerSnapshot(true); snapOk = true; } catch(e) { console.warn('Snapshot:', e); }
-
-    // 2) Backup en carpeta local — solo si está vinculada
-    let carpetaEstado = null; // null = no vinculada
-    if (window._cfFolderHandle) {
-        try {
-            const permOk = await cfVerificarPermiso(window._cfFolderHandle);
-            if (permOk) { await cfBackupEnCarpeta(window._cfFolderHandle); carpetaEstado = true; }
-            else carpetaEstado = false;
-        } catch(e) { carpetaEstado = false; }
-    }
-
-    // 3) Drive — deshabilitado a propósito en desarrollo, para no mezclar con el backup de producción
-    const driveLinea = '➖ Drive: deshabilitado en desarrollo (por diseño)';
-
-    const lineas = [
-        '📦 Backup al salir (DEV)',
-        '',
-        (snapOk ? '✅' : '❌') + ' Snapshot local: ' + (snapOk ? 'guardado' : 'error'),
-        (carpetaEstado === null ? '➖ Carpeta local: no vinculada' : (carpetaEstado ? '✅ Carpeta local: guardado' : '❌ Carpeta local: error')),
-        driveLinea
-    ];
-    alert(lineas.join('\n'));
-    window.close();
-}
 let _syncActivo = false;
-
-// Menú del botón único de Drive (Subir / Restaurar)
-function cfToggleDriveMenu() {
-    const existente = document.getElementById('drive-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('sync-badge');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='drive-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-190)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:190px;';
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-    m.appendChild(mkOpt('☁️ Subir backup ahora', driveSubir, false));
-    m.appendChild(mkOpt('📂 Restaurar backup...', driveRestaurar, true));
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('drive-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú consolidado "⋯ Más" — reemplaza los botones sueltos de Drive/Gmail/Pendientes/
-// Ayuda/Local/IA/Cache para reducir la cantidad de elementos visibles en el header.
-function cfToggleMenuMas() {
-    const existente = document.getElementById('mas-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-mas');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='mas-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;right:'+Math.max(4, window.innerWidth-rect.right)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:230px;';
-
-    const mkLabel = (texto) => {
-        const l = document.createElement('div');
-        l.innerText = texto;
-        l.style.cssText = 'padding:8px 14px 4px;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;';
-        return l;
-    };
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-
-    // Estado de Drive calculado al vuelo (mismo criterio que syncSetBadge)
-    let estadoDrive = '⏳ Drive: sin sincronizar';
-    if (!gTokenCargarLocal() && !gToken) estadoDrive = '☁️ Drive: sin conectar';
-    else if (_syncActivo) estadoDrive = '☁️ Drive: sincronizando...';
-    else if (!_syncPendiente) estadoDrive = '✅ Drive: sincronizado';
-    const estadoEl = document.createElement('div');
-    estadoEl.innerText = estadoDrive;
-    estadoEl.style.cssText = 'padding:8px 14px;font-size:11px;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;';
-
-    m.appendChild(mkLabel('Backup y datos'));
-    m.appendChild(estadoEl);
-    m.appendChild(mkOpt('☁️ Subir backup a Drive', driveSubir, false));
-    m.appendChild(mkOpt('📂 Restaurar backup de Drive', driveRestaurar, false));
-    if (!cfEsMovil()) m.appendChild(mkOpt('📧 Gmail: login + chequear', cfGmailLoginYChequear, false));
-    m.appendChild(mkOpt('🔍 Revisar pendientes', cfRevisarPendientes, false));
-    m.appendChild(mkOpt('💾 Snapshots locales', cfMostrarSnapshots, false));
-    m.appendChild(mkOpt('🗑️ Limpiar caché y recargar', limpiarCache, false));
-
-    m.appendChild(mkLabel('Otros'));
-    m.appendChild(mkOpt('❓ Ayuda', () => window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes'), false));
-    m.appendChild(mkOpt('🤖 Consultar con IA', toggleAIPanel, false));
-
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú "⋯ Más" de la página Mes Actual — agrupa Informe Semanal, Exportar, Importar, PDF y Carpeta
-function cfToggleMenuMasMes() {
-    const existente = document.getElementById('mas-mes-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-mas-mes');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const anchoMenu = 220;
-    const left = Math.max(4, Math.min(rect.left, window.innerWidth - anchoMenu - 8));
-    const m = document.createElement('div'); m.id='mas-mes-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+left+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:'+anchoMenu+'px;';
-    const mkOpt = (label, fn, borde) => {
-        const o = document.createElement('div');
-        o.innerText = label;
-        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
-        o.onmouseover = () => o.style.background = '#f1f5f9';
-        o.onmouseout  = () => o.style.background = '';
-        o.onclick = () => { m.remove(); fn(); };
-        return o;
-    };
-    m.appendChild(mkOpt('📊 Informe Semanal', mostrarInformeSemanal, false));
-    m.appendChild(mkOpt('💾 Exportar', exportar, false));
-    m.appendChild(mkOpt('📥 Importar', () => document.getElementById('input-backup')?.click(), false));
-    m.appendChild(mkOpt('🖨️ PDF', () => window.print(), false));
-    m.appendChild(mkOpt('📂 Carpeta local', cfSeleccionarCarpeta, true));
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-mes-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
-
-// Menú del botón "📅 Meses cerrados" — lista desplegable en vez de una tab por mes
-function cfToggleMesesMenu() {
-    const existente = document.getElementById('meses-menu');
-    if (existente) { existente.remove(); return; }
-    const btn = document.getElementById('btn-meses-cerrados');
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const m = document.createElement('div'); m.id='meses-menu';
-    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-260)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:260px;max-height:360px;overflow-y:auto;';
-    const lista = [...historicoMeses].reverse();
-    if (!lista.length) {
-        const vacio = document.createElement('div');
-        vacio.innerText = 'Todavía no hay meses cerrados';
-        vacio.style.cssText = 'padding:14px;font-size:12px;color:#94a3b8;text-align:center;';
-        m.appendChild(vacio);
-    } else {
-        lista.forEach((mes, i) => {
-            const o = document.createElement('div');
-            o.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:13px;cursor:pointer;color:#1e293b;' + (i>0 ? 'border-top:1px solid #f1f5f9;' : '') + (tabActivo===mes.id ? 'background:#f0fdfa;font-weight:700;' : '');
-            o.onmouseover = () => { if (tabActivo!==mes.id) o.style.background = '#f8fafc'; };
-            o.onmouseout  = () => { if (tabActivo!==mes.id) o.style.background = ''; };
-            const nombreSpan = document.createElement('span');
-            nombreSpan.innerText = '🗂 ' + mes.nombre;
-            nombreSpan.onclick = () => { m.remove(); tabActivo = mes.id; renderTabs(); renderContenido(); };
-            nombreSpan.style.flex = '1';
-            const xSpan = document.createElement('span');
-            xSpan.innerText = '✕'; xSpan.style.cssText = 'color:#94a3b8;font-size:11px;padding-left:10px;';
-            xSpan.onclick = () => {
-                if (confirm('¿Eliminar "' + mes.nombre + '"?')) {
-                    historicoMeses = historicoMeses.filter(x=>x.id!==mes.id);
-                    if (tabActivo===mes.id) tabActivo = null;
-                    guardar(); m.remove(); renderTabs(); renderContenido();
-                }
-            };
-            o.appendChild(nombreSpan); o.appendChild(xSpan);
-            m.appendChild(o);
-        });
-    }
-    document.body.appendChild(m);
-    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('meses-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
-}
 
 // ── Snapshots locales (backup en localStorage, igual que Gestión Docente) ──
 const CF_BKUP_KEY = CF_NS+'cf_backups';
@@ -234,9 +62,9 @@ function cfGuardarSnapshots(bkups) {
 }
 function cfSnapshotData() {
     return JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,
-        listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,
+        listaTransferencias,listaTransferenciasUSD,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,
         listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,
-        listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos});
+        listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos,listaIngresosPresup});
 }
 function cfHacerSnapshot(manual=false) {
     try {
@@ -273,6 +101,7 @@ function cfRestaurarSnapshot(ts) {
         if(d.listaCorrientes)    listaCorrientes    = d.listaCorrientes;
         if(d.listaRubros)        listaRubros        = d.listaRubros;
         if(d.listaTransferencias)listaTransferencias= d.listaTransferencias;
+        if(d.listaTransferenciasUSD)listaTransferenciasUSD= d.listaTransferenciasUSD;
         if(d.listaCuotas)        listaCuotas        = d.listaCuotas;
         if(d.historicoMeses)     historicoMeses     = d.historicoMeses;
         if(d.listaCuentasUSD)    listaCuentasUSD    = d.listaCuentasUSD;
@@ -343,6 +172,7 @@ function guardar() {
         localStorage.setItem(K.servicios,      JSON.stringify(listaServicios));
         localStorage.setItem(K.corrientes,     JSON.stringify(listaCorrientes));
         localStorage.setItem(K.transferencias, JSON.stringify(listaTransferencias));
+        localStorage.setItem(K.transferenciasUSD, JSON.stringify(listaTransferenciasUSD));
         localStorage.setItem(K.cuotas,         JSON.stringify(listaCuotas));
         localStorage.setItem(K.historico,      JSON.stringify(historicoMeses));
         localStorage.setItem(K.cuentasUSD,     JSON.stringify(listaCuentasUSD));
@@ -356,7 +186,9 @@ function guardar() {
         localStorage.setItem(CF_NS+'f_presup_rubros_usd_v1', JSON.stringify(listaPresupRubrosUSD));
         localStorage.setItem(CF_NS+'f_rubros_usd_v1',         JSON.stringify(listaRubrosUSD));
         localStorage.setItem(K.ingresos,       JSON.stringify(listaIngresos));
+        localStorage.setItem(K.ingresosPresup, JSON.stringify(listaIngresosPresup));
         localStorage.setItem(K.pagosTarjeta,   JSON.stringify(listaPagosTarjeta));
+        localStorage.setItem(K.pagosTarjetaUSD,JSON.stringify(listaPagosTarjetaUSD));
         syncDebounce();
     } catch(e) {
         if(e.name==='QuotaExceededError'||e.code===22||e.code===1014) {
@@ -393,12 +225,11 @@ function parseNum(str) {
 function syncSetBadge(estado) {
     const b = document.getElementById('sync-badge');
     if(!b) return;
-    const base='font-size:11px;font-weight:bold;padding:5px 10px;border-radius:4px;cursor:pointer;border:none;';
-    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText=base+'background:#dcfce7;color:#15803d;'; }
-    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText=base+'background:#fef9c3;color:#854d0e;'; }
-    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText=base+'background:#dbeafe;color:#1d4ed8;'; }
-    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText=base+'background:#fee2e2;color:#b91c1c;'; }
-    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText=base+'background:#f1f5f9;color:#64748b;'; }
+    if(estado === 'ok')       { b.innerText='✅ Drive sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#15803d;cursor:default;'; }
+    else if(estado === 'pend'){ b.innerText='⏳ Sin sincronizar'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fef9c3;color:#854d0e;cursor:default;'; }
+    else if(estado === 'sync'){ b.innerText='☁️ Sincronizando...'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#dbeafe;color:#1d4ed8;cursor:default;'; }
+    else if(estado === 'err') { b.innerText='⚠️ Error sync'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#fee2e2;color:#b91c1c;cursor:default;'; }
+    else if(estado === 'noauth'){ b.innerText='☁️ Drive'; b.style.cssText='font-size:11px;font-weight:bold;padding:4px 10px;border-radius:4px;background:#f1f5f9;color:#64748b;cursor:pointer;'; }
 }
 function syncDebounce() {
     if(!gToken) gTokenCargarLocal();
@@ -412,6 +243,36 @@ function syncDebounce() {
 // ID del archivo sync único en Drive (para sobreescribir en lugar de crear nuevos)
 let _driveFileId = null;
 
+// ⚠️ SYNC DRIVE DESHABILITADO EN V2 para no mezclar con backup original
+async function syncSilencioso() { return; }
+async function syncAlSalir() {
+    // 1) Snapshot local — siempre
+    let snapOk = false;
+    try { cfHacerSnapshot(true); snapOk = true; } catch(e) { console.warn('Snapshot:', e); }
+
+    // 2) Backup en carpeta local — solo si está vinculada
+    let carpetaEstado = null; // null = no vinculada
+    if (window._cfFolderHandle) {
+        try {
+            const permOk = await cfVerificarPermiso(window._cfFolderHandle);
+            if (permOk) { await cfBackupEnCarpeta(window._cfFolderHandle); carpetaEstado = true; }
+            else carpetaEstado = false;
+        } catch(e) { carpetaEstado = false; }
+    }
+
+    // 3) Drive — deshabilitado a propósito en desarrollo, para no mezclar con el backup de producción
+    const driveLinea = '➖ Drive: deshabilitado en desarrollo (por diseño)';
+
+    const lineas = [
+        '📦 Backup al salir (DEV)',
+        '',
+        (snapOk ? '✅' : '❌') + ' Snapshot local: ' + (snapOk ? 'guardado' : 'error'),
+        (carpetaEstado === null ? '➖ Carpeta local: no vinculada' : (carpetaEstado ? '✅ Carpeta local: guardado' : '❌ Carpeta local: error')),
+        driveLinea
+    ];
+    alert(lineas.join('\n'));
+    window.close();
+}
 
 
 // ═══════════════════════════════════════════
@@ -503,10 +364,10 @@ async function cfBackupEnCarpeta(handle) {
         const fecha  = cfFechaLocal();
         const nombre = 'cf_backup_' + fecha + '.json';
         const data   = {listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,
-                        listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,
+                        listaTransferencias,listaTransferenciasUSD,listaCuotas,historicoMeses,listaCuentasUSD,
                         listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,
                         listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,
-                        listaRubrosUSD,listaIngresos};
+                        listaRubrosUSD,listaIngresos,listaIngresosPresup};
         const fileHandle = await handle.getFileHandle(nombre, { create: true });
         const writable   = await fileHandle.createWritable();
         await writable.write(JSON.stringify(data, null, 2));
@@ -562,6 +423,129 @@ function cfMostrarBannerReauthCarpeta(handle) {
     };
 }
 
+function cfToggleMesesMenu() {
+    const existente = document.getElementById('meses-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-meses-cerrados');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='meses-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+Math.max(4,rect.right-260)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:260px;max-height:360px;overflow-y:auto;';
+    const lista = [...historicoMeses].reverse();
+    if (!lista.length) {
+        const vacio = document.createElement('div');
+        vacio.innerText = 'Todavía no hay meses cerrados';
+        vacio.style.cssText = 'padding:14px;font-size:12px;color:#94a3b8;text-align:center;';
+        m.appendChild(vacio);
+    } else {
+        lista.forEach((mes, i) => {
+            const o = document.createElement('div');
+            o.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:13px;cursor:pointer;color:#1e293b;' + (i>0 ? 'border-top:1px solid #f1f5f9;' : '') + (tabActivo===mes.id ? 'background:#f0fdfa;font-weight:700;' : '');
+            o.onmouseover = () => { if (tabActivo!==mes.id) o.style.background = '#f8fafc'; };
+            o.onmouseout  = () => { if (tabActivo!==mes.id) o.style.background = ''; };
+            const nombreSpan = document.createElement('span');
+            nombreSpan.innerText = '🗂 ' + mes.nombre;
+            nombreSpan.onclick = () => { m.remove(); tabActivo = mes.id; renderTabs(); renderContenido(); };
+            nombreSpan.style.flex = '1';
+            const xSpan = document.createElement('span');
+            xSpan.innerText = '✕'; xSpan.style.cssText = 'color:#94a3b8;font-size:11px;padding-left:10px;';
+            xSpan.onclick = () => {
+                if (confirm('¿Eliminar "' + mes.nombre + '"?')) {
+                    historicoMeses = historicoMeses.filter(x=>x.id!==mes.id);
+                    if (tabActivo===mes.id) tabActivo = null;
+                    guardar(); m.remove(); renderTabs(); renderContenido();
+                }
+            };
+            o.appendChild(nombreSpan); o.appendChild(xSpan);
+            m.appendChild(o);
+        });
+    }
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('meses-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+function cfToggleMenuMas() {
+    const existente = document.getElementById('mas-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const m = document.createElement('div'); m.id='mas-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;right:'+Math.max(4, window.innerWidth-rect.right)+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:230px;';
+
+    const mkLabel = (texto) => {
+        const l = document.createElement('div');
+        l.innerText = texto;
+        l.style.cssText = 'padding:8px 14px 4px;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;';
+        return l;
+    };
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+
+    // Estado de Drive calculado al vuelo (mismo criterio que syncSetBadge)
+    let estadoDrive = '⏳ Drive: sin sincronizar';
+    if (!gTokenCargarLocal() && !gToken) estadoDrive = '☁️ Drive: sin conectar';
+    else if (_syncActivo) estadoDrive = '☁️ Drive: sincronizando...';
+    else if (!_syncPendiente) estadoDrive = '✅ Drive: sincronizado';
+    const estadoEl = document.createElement('div');
+    estadoEl.innerText = estadoDrive;
+    estadoEl.style.cssText = 'padding:8px 14px;font-size:11px;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;';
+
+    m.appendChild(mkLabel('Backup y datos'));
+    m.appendChild(estadoEl);
+    m.appendChild(mkOpt('☁️ Subir backup a Drive', driveSubir, false));
+    m.appendChild(mkOpt('📂 Restaurar backup de Drive', driveRestaurar, false));
+    if (!cfEsMovil()) m.appendChild(mkOpt('📧 Gmail: login + chequear', cfGmailLoginYChequear, false));
+    m.appendChild(mkOpt('🔍 Revisar pendientes', cfRevisarPendientes, false));
+    m.appendChild(mkOpt('💾 Snapshots locales', cfMostrarSnapshots, false));
+    m.appendChild(mkOpt('🗑️ Limpiar caché y recargar', limpiarCache, false));
+
+    m.appendChild(mkLabel('Otros'));
+    m.appendChild(mkOpt('❓ Ayuda', () => window.open('./instructivo.html','_blank','width=1100,height=750,resizable=yes,scrollbars=yes'), false));
+    m.appendChild(mkOpt('🤖 Consultar con IA', toggleAIPanel, false));
+
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+function cfToggleMenuMasMes() {
+    const existente = document.getElementById('mas-mes-menu');
+    if (existente) { existente.remove(); return; }
+    const btn = document.getElementById('btn-mas-mes');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const anchoMenu = 220;
+    const left = Math.max(4, Math.min(rect.left, window.innerWidth - anchoMenu - 8));
+    const m = document.createElement('div'); m.id='mas-mes-menu';
+    m.style.cssText='position:fixed;top:'+(rect.bottom+4)+'px;left:'+left+'px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:3000;overflow:hidden;min-width:'+anchoMenu+'px;';
+    const mkOpt = (label, fn, borde) => {
+        const o = document.createElement('div');
+        o.innerText = label;
+        o.style.cssText = 'padding:10px 14px;font-size:12px;cursor:pointer;color:#1e293b;' + (borde ? 'border-top:1px solid #e2e8f0;' : '');
+        o.onmouseover = () => o.style.background = '#f1f5f9';
+        o.onmouseout  = () => o.style.background = '';
+        o.onclick = () => { m.remove(); fn(); };
+        return o;
+    };
+    m.appendChild(mkOpt('📊 Informe Semanal', mostrarInformeSemanal, false));
+    m.appendChild(mkOpt('💾 Exportar', exportar, false));
+    m.appendChild(mkOpt('📥 Importar', () => document.getElementById('input-backup')?.click(), false));
+    m.appendChild(mkOpt('🖨️ PDF', () => window.print(), false));
+    m.appendChild(mkOpt('📂 Carpeta local', cfSeleccionarCarpeta, true));
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener('click', function cerrar(){ document.getElementById('mas-mes-menu')?.remove(); document.removeEventListener('click', cerrar); }, {once:true}), 0);
+}
+
+
+
+
 document.addEventListener('DOMContentLoaded', () => {
     document.title = 'Control Financiero ' + APP_VERSION;
     // Pedir almacenamiento persistente: evita que el navegador evicte IndexedDB
@@ -569,6 +553,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navigator.storage && navigator.storage.persist) {
         navigator.storage.persist().catch(()=>{});
     }
+    // Reconecta/renueva el token de Drive en silencio al abrir (sin popup), para que
+    // al tocar Salir el backup a Drive sea instantáneo y no se pierda el permiso
+    // del navegador para cerrar la ventana con window.close().
+    driveGetToken(() => {});
     // Snapshot local al cerrar con X (beforeunload — síncrono, siempre funciona)
     window.addEventListener('beforeunload', () => { cfHacerSnapshot(false); });
     // Snapshot + intento Drive al ocultar pestaña
@@ -582,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTabs();
     renderContenido();
     cfRestaurarCarpeta();
-    // Módulo Gmail: chequear si hay sesión activa (el botón de login vive ahora en el menú "⋯ Más")
+    // Módulo Gmail: chequear mails de Santander automáticamente en PC
     setTimeout(() => { cfGmailChequear(); }, 800);
 });
 
@@ -603,10 +591,10 @@ function renderTabs() {
     mkTab('<span>📊 Mes Actual</span>',  tabActivo===null,       ()=>{ tabActivo=null;       renderTabs(); renderContenido(); });
     mkTab('<span>🎯 Presupuesto</span>', tabActivo==='presupuesto', ()=>{ tabActivo='presupuesto'; renderTabs(); renderContenido(); }, 'background:#f5f3ff;color:#6d28d9;border-color:#c4b5fd;');
     mkTab('<span>💵 Dólares</span>',     tabActivo==='dolares',  ()=>{ tabActivo='dolares';  renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#15803d;border-color:#86efac;');
-    mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
+    mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ if(tabActivo!=='reportes') reportesMesId=null; tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
-    // Botón único de Drive (fusiona badge de estado + subir + restaurar) — botón Salir queda aparte, sin tocar
+    // Badge sync + botón Salir — siempre visible en la tab bar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
     // Elemento oculto: mantiene compatibilidad con syncSetBadge() (usado por el resto del código)
@@ -697,6 +685,23 @@ function inpNum(val, onChange) {
     inp._setVal=v=>{ last=Math.round(v); if(document.activeElement!==inp) inp.value=fmtN(last); };
     return inp;
 }
+function inpNumPagado(val, onChange) {
+    const inp=el('input'); inp.type='text'; inp.className='inp tr'; inp.placeholder='0';
+    let last=Math.round(val);
+    inp.value = last===0 ? '' : fmtN(last);
+    inp.addEventListener('focus', ()=>{ inp.value = last===0 ? '' : last; });
+    inp.addEventListener('change', e=>{
+        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        last=v; onChange(v); inp.value = v===0 ? '' : fmtN(v);
+    });
+    inp.addEventListener('blur', e=>{
+        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        if(v!==last){ last=v; onChange(v); }
+        inp.value = last===0 ? '' : fmtN(last);
+    });
+    inp._setVal=v=>{ last=Math.round(v); if(document.activeElement!==inp) inp.value = last===0 ? '' : fmtN(last); };
+    return inp;
+}
 function inpNumUSD(val, onChange) {
     const inp=el('input'); inp.type='text'; inp.className='inp tr';
     let last=Math.round(val*100)/100;
@@ -738,6 +743,7 @@ function buildMesActual() {
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-mes"   id="btn-nuevo-mes">🔄 Abrir Nuevo Mes</button>
+          <button class="btn" id="btn-chequear-mails" onclick="cfRevisarPendientes()" style="background:#0f766e;color:white;font-size:12px;padding:7px 12px;">📧 Chequear mails</button>
           <button class="btn" id="btn-mas-mes" style="background:#475569;color:white;font-size:12px;padding:7px 12px;">⋯ Más</button>
           <input type="file" id="input-backup" accept=".json" style="display:none;">
           <span id="cf-carpeta-status" style="display:none;font-size:10px;color:#34d399;font-weight:700;"></span>
@@ -972,7 +978,7 @@ function render() {
     if(sRubro){ sRubro.innerHTML=''; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sRubro,r,r)); }
     const sSrvRubro=document.getElementById('srv-rubro');
     if(sSrvRubro){ sSrvRubro.innerHTML='<option value="">— Sin rubro —</option>'; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sSrvRubro,r,r)); }
-    listaRubros.forEach(r=>{
+    [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>{
         const b=el('div','rubro-badge'); 
         const col=colorRubro(r);
         b.style.cssText='border-left:4px solid '+col+';background:'+col+'18;';
@@ -1055,7 +1061,7 @@ function render() {
         const estSpan=el('span'); estSpan.id='est-'+s.id; estSpan.style.cssText='font-size:10px;font-weight:bold;padding:3px 6px;border-radius:4px;';
         const tdEst=el('td','tc'); tdEst.appendChild(estSpan);
         const tdPag=el('td','tr');
-        const inpPag=inpNum(s.pagado, v=>{
+        const inpPag=inpNumPagado(s.pagado, v=>{
             const diff=v-s.pagado;
             if(diff!==0){
                 const bk=listaBancos.find(b=>b.id===s.medioPagoId);
@@ -1215,7 +1221,7 @@ function renderPresupRubros() {
 }
 function actualizarPresupRubro(inp) {
     const r = inp.getAttribute('data-rubro');
-    const v = parseFloat(inp.value)||0;
+    const v = parseFloat(inp.value.replace(/\./g,''))||0;
     if(v>0) listaPresupRubros[r]=v; else delete listaPresupRubros[r];
     guardar(); renderPresupRubros();
     if(tabActivo==='presupuesto') renderContenido();
@@ -1366,6 +1372,87 @@ function elimIngreso(id) {
     guardar();
     render();
 }
+
+// ── Ingresos informativos de Presupuesto (no tocan cuentas bancarias) ──
+function calcTotalPresupuestoPesos() {
+    return Object.values(listaPresupRubros).reduce((a,b)=>a+b,0);
+}
+function abrirModalIngresoPresup() {
+    document.getElementById('ip-concepto').value = '';
+    document.getElementById('ip-monto').value = '';
+    document.getElementById('ip-fecha').value = cfFechaLocal();
+    document.getElementById('ip-tipo').value = 'Fijo';
+    document.getElementById('modal-ingreso-presup').style.display = 'flex';
+}
+function cerrarModalIngresoPresup() {
+    document.getElementById('modal-ingreso-presup').style.display = 'none';
+}
+function confirmarIngresoPresup() {
+    const mesActual = cfFechaLocal().slice(0,7);
+    const delMes = listaIngresosPresup.filter(i=>(i.fecha||'').slice(0,7)===mesActual);
+    if(delMes.length>=4){ alert('Ya cargaste el máximo de 4 ingresos para este mes.'); return; }
+    const concepto = (document.getElementById('ip-concepto').value||'').trim();
+    const monto = parseFloat(document.getElementById('ip-monto').value)||0;
+    const fecha = document.getElementById('ip-fecha').value||cfFechaLocal();
+    const tipo = document.getElementById('ip-tipo').value||'Fijo';
+    if(!concepto){ alert('Ingresá un concepto.'); return; }
+    if(monto<=0){ alert('Ingresá un monto mayor a cero.'); return; }
+    listaIngresosPresup.push({id:'ip_'+Date.now(), concepto, monto, fecha, tipo});
+    guardar();
+    document.getElementById('ip-concepto').value = '';
+    document.getElementById('ip-monto').value = '';
+    document.getElementById('ip-fecha').value = cfFechaLocal();
+    document.getElementById('ip-tipo').value = 'Fijo';
+    refrescarIngresosPresupUI();
+}
+function elimIngresoPresup(id) {
+    if(!confirm('¿Eliminar este ingreso?')) return;
+    listaIngresosPresup = listaIngresosPresup.filter(i=>i.id!==id);
+    guardar();
+    refrescarIngresosPresupUI();
+}
+function refrescarIngresosPresupUI() {
+    const mesActual = cfFechaLocal().slice(0,7);
+    const items = listaIngresosPresup.filter(i=>(i.fecha||'').slice(0,7)===mesActual).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+    const total = items.reduce((a,i)=>a+i.monto,0);
+    const totalPresup = calcTotalPresupuestoPesos();
+    const balance = total - totalPresup;
+    const esSuperavit = balance>=0;
+    const color = esSuperavit ? '#16a34a' : '#ef4444';
+    const bg = esSuperavit ? '#f0fdf4' : '#fef2f2';
+    const border = esSuperavit ? '#bbf7d0' : '#fecaca';
+    const lleno = items.length>=4;
+
+    const card = document.getElementById('ip-card');
+    if(card){ card.style.background = bg; card.style.borderColor = border; }
+    const cardTotal = document.getElementById('ip-card-total'); if(cardTotal) cardTotal.textContent = fmt(total);
+    const cardCount = document.getElementById('ip-card-count'); if(cardCount) cardCount.textContent = items.length+' de 4 registros · tocá para ver detalle';
+    const cardBadge = document.getElementById('ip-card-badge'); if(cardBadge){ cardBadge.textContent = esSuperavit?'SUPERÁVIT':'DÉFICIT'; cardBadge.style.background = color+'22'; cardBadge.style.color = color; }
+    const cardBal = document.getElementById('ip-card-balance'); if(cardBal){ cardBal.textContent = (esSuperavit?'+ ':'− ')+fmt(Math.abs(balance)); cardBal.style.color = color; }
+
+    const modalTotal = document.getElementById('ip-modal-total'); if(modalTotal) modalTotal.textContent = fmt(total);
+    const modalBadge = document.getElementById('ip-modal-badge'); if(modalBadge){ modalBadge.textContent = esSuperavit?'SUPERÁVIT':'DÉFICIT'; modalBadge.style.background = color+'22'; modalBadge.style.color = color; }
+    const modalBalance = document.getElementById('ip-modal-balance'); if(modalBalance){ modalBalance.textContent = (esSuperavit?'+ ':'− ')+fmt(Math.abs(balance)); modalBalance.style.color = color; }
+
+    const lista = document.getElementById('ip-lista');
+    if(lista){
+        if(items.length){
+            lista.innerHTML = items.map(i=>{
+                const fechaCorta = i.fecha ? i.fecha.slice(8,10)+'/'+i.fecha.slice(5,7) : '—';
+                const tipoColor = i.tipo==='Variable' ? '#a855f7' : '#0284c7';
+                return '<div style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border:1px solid #f1f5f9;border-radius:8px;padding:8px 12px;">'
+                    +'<div><b style="font-size:13px;color:#1e293b;">'+i.concepto+'</b>'
+                    +'<div style="font-size:11px;color:#94a3b8;margin-top:2px;">'+fechaCorta+' · <span style="color:'+tipoColor+';font-weight:bold;">'+(i.tipo||'Fijo')+'</span></div></div>'
+                    +'<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:14px;color:#0284c7;">'+fmt(i.monto)+'</b>'
+                    +'<button onclick="elimIngresoPresup(\''+i.id+'\')" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;">✕</button></div></div>';
+            }).join('');
+        } else {
+            lista.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:12px;">Sin ingresos cargados este mes.</div>';
+        }
+    }
+    const addBtn = document.getElementById('ip-add-btn');
+    if(addBtn){ addBtn.disabled = lleno; addBtn.style.cursor = lleno?'not-allowed':'pointer'; addBtn.style.opacity = lleno?'0.5':'1'; }
+}
 function altaTarjeta(e) { e.preventDefault(); listaTarjetas.push({id:'t_'+Date.now(),nombre:vGet('tarjeta-nombre'),saldo:nGet('tarjeta-saldo')}); guardar(); e.target.reset(); render(); }
 function altaServicio(e) {
     e.preventDefault();
@@ -1460,7 +1547,8 @@ function nuevoMes() {
                listaCorrientes:clon(listaCorrientes),listaTransferencias:clon(listaTransferencias),
                listaRubros:clon(listaRubros),listaCuotas:clon(listaCuotas),
                listaCuentasUSD:clon(listaCuentasUSD),listaTarjetasUSD:clon(listaTarjetasUSD),
-               listaServiciosUSD:clon(listaServiciosUSD),listaCorrientesUSD:clon(listaCorrientesUSD),tipoCambio}});
+               listaServiciosUSD:clon(listaServiciosUSD),listaCorrientesUSD:clon(listaCorrientesUSD),
+               listaTransferenciasUSD:clon(listaTransferenciasUSD),tipoCambio}});
     // Ajustar tarjetas pesos (bancos ya tienen sus saldos actualizados)
     const mDeb={}; listaTarjetas.forEach(t=>mDeb[t.id]=0);
     listaServicios.forEach(s=>{ if(s.pagado>0&&mDeb[s.medioPagoId]!==undefined) mDeb[s.medioPagoId]+=s.pagado; });
@@ -1483,7 +1571,7 @@ function nuevoMes() {
         if(!(listaPresupRubrosUSD[r]>0) && gastadoMesUSD[r]>0) listaPresupRubrosUSD[r]=Math.round(gastadoMesUSD[r]*100)/100;
     });
     // Limpiar pesos
-    listaServicios.forEach(s=>{ s.pagado=0; s.fPago=''; });
+    listaServicios.forEach(s=>{ s.pagado=0; s.fPago=''; if(!s.esCuota) s.fVto=''; });
     listaCorrientes=listaCorrientes.filter(c=>!c.fechaPago);
     listaTransferencias=[];
     // Generar cuotas
@@ -1495,8 +1583,9 @@ function nuevoMes() {
     listaCorrientesUSD.forEach(c=>{ if(mDU[c.medioPagoId]!==undefined) mDU[c.medioPagoId]+=c.monto*(c.esIngreso?-1:1); });
     listaTarjetasUSD.forEach(t=>{ t.saldo=Math.round((t.saldo+(mDU[t.id]||0))*100)/100; });
     // Limpiar USD
-    listaServiciosUSD.forEach(s=>{ s.pagado=0; s.fPago=''; });
+    listaServiciosUSD.forEach(s=>{ s.pagado=0; s.fPago=''; if(!s.esCuota) s.fVto=''; });
     listaCorrientesUSD=[];
+    listaTransferenciasUSD=[];
     guardar(); renderTabs(); renderContenido();
     alert('✅ Mes "'+nombre+sufijo+'" archivado. Nuevo período abierto.');
 }
@@ -1506,7 +1595,7 @@ function nuevoMes() {
 // ═══════════════════════════════════════════
 function exportar() {
     const a=new Date(), ts=a.getFullYear()+String(a.getMonth()+1).padStart(2,'0')+String(a.getDate()).padStart(2,'0')+'_'+String(a.getHours()).padStart(2,'0')+String(a.getMinutes()).padStart(2,'0');
-    const data={listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos};
+    const data={listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaTransferenciasUSD,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos,listaIngresosPresup,gmailProcessed:cfGmailGetProcessed()};
     const lnk=document.createElement('a'); lnk.href='data:text/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data));
     lnk.download='backup_finanzas_'+ts+'.json'; document.body.appendChild(lnk); lnk.click(); lnk.remove();
 }
@@ -1517,6 +1606,7 @@ function cargarDatos(res) {
     listaCorrientes     = res.listaCorrientes     || [];
     listaRubros         = res.listaRubros         || [];
     listaTransferencias = res.listaTransferencias || [];
+    listaTransferenciasUSD = res.listaTransferenciasUSD || [];
     listaCuotas         = res.listaCuotas         || [];
     historicoMeses      = res.historicoMeses      || [];
     listaCuentasUSD     = res.listaCuentasUSD     || [];
@@ -1530,7 +1620,17 @@ function cargarDatos(res) {
     if(res.listaPresupRubrosUSD) listaPresupRubrosUSD = res.listaPresupRubrosUSD;
     if(res.listaRubrosUSD)       listaRubrosUSD       = res.listaRubrosUSD;
     if(res.listaIngresos)        listaIngresos        = res.listaIngresos;
+    if(res.listaIngresosPresup)  listaIngresosPresup  = res.listaIngresosPresup;
     if(res.groqKey)            localStorage.setItem(CF_NS+'groq_api_key', res.groqKey);
+    if(res.gmailProcessed && Array.isArray(res.gmailProcessed)) {
+        const propios = cfGmailGetProcessed();
+        const mapa = new Map(propios.map(x => [x.id, x.ts]));
+        res.gmailProcessed.forEach(x => {
+            if (x && x.id) mapa.set(x.id, Math.max(mapa.get(x.id) || 0, x.ts || Date.now()));
+        });
+        const fusionado = Array.from(mapa, ([id, ts]) => ({ id, ts }));
+        try { localStorage.setItem(CF_GMAIL_PROCESSED_KEY, JSON.stringify(fusionado)); } catch(e) {}
+    }
 }
 function importar(event) {
     const file=event.target.files[0]; if(!file) return;
@@ -1570,7 +1670,7 @@ function modalVencimientos() {
     }
     if(cuotasTerminando.length){
         itemsHtml += '<div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin:'+(proximos.length?'16px':'0')+'px 0 8px;">⚡ Cuotas por terminar</div>';
-        itemsHtml += cuotasTerminando.map(c=>{ const rest=c.totalCuotas-c.cuotaActual; const lbl=rest===0?'Última cuota':rest===1?'Quedan 2 cuotas':'Quedan '+rest+' cuotas'; return '<div class="vto-item proximo"><div><div class="vto-nombre">'+c.descripcion+'</div><div class="vto-sub">'+fmt(c.montoCuota)+'/mes · Cuota '+c.cuotaActual+' de '+c.totalCuotas+'</div></div><div class="vto-fecha"><div class="vto-dias" style="background:#f3e8ff;color:#7c3aed;">'+lbl+'</div></div></div>'; }).join('');
+        itemsHtml += cuotasTerminando.map(c=>{ const rest=c.totalCuotas-c.cuotaActual; const lbl=rest===0?'Última cuota':rest===1?'Quedan 2 cuotas':'Quedan '+rest+' cuotas'; return '<div class="vto-item cuota"><div><div class="vto-nombre">'+c.descripcion+'</div><div class="vto-sub">'+fmt(c.montoCuota)+'/mes · Cuota '+c.cuotaActual+' de '+c.totalCuotas+'</div></div><div class="vto-fecha"><div class="vto-dias" style="background:#f3e8ff;color:#7c3aed;">'+lbl+'</div></div></div>'; }).join('');
     }
     const ov=el('div','modal-overlay no-print'); ov.id='modal-vto';
     const titulo = proximos.length && cuotasTerminando.length ? 'Vencimientos y cuotas próximas' : proximos.length ? 'Vencimientos en los próximos 5 días hábiles' : 'Cuotas por terminar';
@@ -1636,6 +1736,18 @@ function buildDolares() {
               </form>
             </div>
             <div id="t-tusd"></div>
+            <div id="wrap-pagos-tarjeta-usd"></div>
+          </div>
+          <div class="panel no-print" style="border-top:4px solid #f59e0b;">
+            <h3 class="panel-title" style="display:flex;align-items:center;">↔️ Transferencias USD ${btnAyuda('dolares')}</h3>
+            <div class="form-block">
+              <form id="form-transf-usd">
+                <div class="form-row"><div><label>Origen</label><select id="transfusd-origen" required></select></div><div><label>Destino</label><select id="transfusd-destino" required></select></div></div>
+                <div class="form-row"><div><label>Monto (USD)</label><input type="number" id="transfusd-monto" required placeholder="0" step="0.01"></div><div><label>Fecha</label><input type="date" id="transfusd-fecha" required></div></div>
+                <button type="submit" class="btn btn-add btn-amber">Registrar Transferencia USD</button>
+              </form>
+            </div>
+            <table><thead><tr><th style="width:18%">Fecha</th><th style="width:30%">Origen</th><th style="width:30%">Destino</th><th style="width:17%" class="tr">Monto</th><th style="width:5%" class="no-print"></th></tr></thead><tbody id="t-transf-usd"></tbody></table>
           </div>
         </div>
         <div>
@@ -1693,6 +1805,7 @@ function bindDolares() {
     g('form-tusd')?.addEventListener('submit', altaTarjetaUSD);
     g('form-susd')?.addEventListener('submit', altaServicioUSD);
     g('form-ccusd')?.addEventListener('submit', altaCorrienteUSD);
+    g('form-transf-usd')?.addEventListener('submit', altaTransferenciaUSD);
     g('btn-dol-actualizar')?.addEventListener('click', actualizarTCDolares);
     g('form-rubro-usd')?.addEventListener('submit', e=>{
         e.preventDefault();
@@ -1786,6 +1899,19 @@ function renderDolares() {
     const selR=document.getElementById('ccusd-rubro'), selM=document.getElementById('ccusd-medio');
     if(selR){ selR.innerHTML=''; listaRubrosUSD.forEach(r=>addOpt(selR,r,r)); }
     if(selM){ selM.innerHTML=''; listaTarjetasUSD.forEach(t=>addOpt(selM,t.id,'💳 '+t.nombre)); listaCuentasUSD.forEach(c=>addOpt(selM,c.id,'🏦 '+c.nombre)); }
+    // Transferencias USD
+    const tTrU=document.getElementById('t-transf-usd'), selOU=document.getElementById('transfusd-origen'), selDU=document.getElementById('transfusd-destino');
+    [selOU,selDU].forEach(s=>{ if(s) s.innerHTML=''; });
+    listaCuentasUSD.forEach(c=>{ [selOU,selDU].forEach(s=>{ if(s) addOpt(s,c.id,'🏦 '+c.nombre); }); });
+    listaTarjetasUSD.forEach(t=>{ [selOU,selDU].forEach(s=>{ if(s) addOpt(s,t.id,'💳 '+t.nombre); }); });
+    if(tTrU){
+        tTrU.innerHTML='';
+        if(!listaTransferenciasUSD.length) { tTrU.innerHTML='<tr><td colspan="5" class="tc" style="color:#94a3b8;padding:12px;">Sin transferencias.</td></tr>'; }
+        else { [...listaTransferenciasUSD].reverse().forEach(t=>{
+            const tdM=el('td','tr'); tdM.style.cssText='font-weight:bold;color:#f59e0b;'; tdM.innerText=fmtUSD(t.monto);
+            tTrU.appendChild(fila([tdTxt(t.fecha||'—'),tdTxt(t.origenNombre),tdTxt(t.destinoNombre),tdM,tdBtn('✕',()=>elimTransferenciaUSD(t.id))]));
+        }); }
+    }
     const mDU=calcMDU();
     // Rubros USD badges
     const rUSDLista = document.getElementById('rubros-usd-lista');
@@ -1823,8 +1949,11 @@ function renderDolares() {
             const card=el('div'); card.style.cssText='border:1px solid #e2e8f0;border-left:4px solid #a855f7;border-radius:6px;padding:12px;margin-bottom:8px;background:white;';
             const row1=el('div'); row1.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;';
             const nom=el('span'); nom.style.cssText='font-weight:bold;color:#1e293b;font-size:14px;'; nom.innerText=t.nombre;
+            const btnsWrap=el('div'); btnsWrap.style.cssText='display:flex;align-items:center;gap:6px;';
+            const btnPagar=el('button','btn-secondary btn-sm'); btnPagar.innerText='💳 Pagar'; btnPagar.style.cssText='font-size:11px;padding:4px 8px;'; btnPagar.onclick=function(){ abrirModalPagoTarjetaUSD(t.id); };
             const btnX=el('button','btn-del'); btnX.innerText='\u2715'; btnX.onclick=function(){ elimTarjetaUSD(t.id); };
-            row1.appendChild(nom); row1.appendChild(btnX);
+            btnsWrap.appendChild(btnPagar); btnsWrap.appendChild(btnX);
+            row1.appendChild(nom); row1.appendChild(btnsWrap);
             const mkC=function(label,node,color){ const c=el('div'); c.style.cssText='background:#f8fafc;border-radius:4px;padding:6px 10px;'; const l=el('div'); l.style.cssText='font-size:10px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px;'; l.innerText=label; const v=el('div'); v.style.cssText='font-size:15px;font-weight:bold;color:'+(color||'#1e293b')+';'; if(typeof node==='string') v.innerText=node; else v.appendChild(node); c.appendChild(l); c.appendChild(v); return c; };
             const inp=inpNumUSD(t.saldo,function(v){ t.saldo=v; guardar(); calcDashUSD(); });
             inp.style.cssText='width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;font-size:15px;font-weight:bold;color:#a855f7;background:white;text-align:right;';
@@ -1837,6 +1966,23 @@ function renderDolares() {
         const tot=el('div'); tot.style.cssText='background:#f8fafc;border-radius:6px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-top:4px;';
         tot.innerHTML='<span style="font-weight:bold;color:#1e293b;">Total</span><div style="text-align:right;"><div style="font-weight:bold;color:#a855f7;font-size:15px;">'+fmtUSD(totTU)+'</div><div style="font-size:13px;color:#0284c7;">'+fmt(totTU*tipoCambio)+'</div></div>';
         tTU.appendChild(tot);
+    }
+    const wPTU = document.getElementById('wrap-pagos-tarjeta-usd');
+    if (wPTU) {
+        const ultimosPagosU = [...listaPagosTarjetaUSD].reverse().slice(0, 5);
+        if (!ultimosPagosU.length) { wPTU.innerHTML = ''; }
+        else {
+            wPTU.innerHTML = '<div style="font-size:11px;font-weight:bold;color:#94a3b8;text-transform:uppercase;margin:10px 0 4px;">Últimos pagos de tarjeta USD</div>'
+                + ultimosPagosU.map(p => {
+                    const [y,m,d] = (p.fecha||'').split('-');
+                    const fechaCorta = (d&&m) ? d+'/'+m : (p.fecha||'');
+                    const tit = 'Pagado desde ' + p.cuentaNombre + ' el ' + p.fecha;
+                    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:5px 8px;border-bottom:1px solid #f1f5f9;">
+                    <span title="${tit}" style="color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">✅ ${fechaCorta} ${p.tarjetaNombre}</span>
+                    <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;"><b style="color:#a855f7;">-${fmtUSD(p.monto)}</b><button onclick="elimPagoTarjetaUSD('${p.id}')" style="border:none;background:none;color:#cbd5e1;cursor:pointer;font-size:13px;">✕</button></span>
+                </div>`;
+                }).join('');
+        }
     }
     // Servicios USD
     [...listaServiciosUSD].sort((a,b)=>{ const est=s=>s.pagado>=s.presupuesto&&s.presupuesto>0?2:s.pagado>0?1:0; return est(a)!==est(b)?est(a)-est(b):a.nombre.localeCompare(b.nombre,'es'); }).forEach(s=>{
@@ -1905,25 +2051,46 @@ function altaCorrienteUSD(e) {
     const chk=document.getElementById('ccusd-ingreso'); if(chk) chk.checked=false;
     guardar(); e.target.reset(); renderDolares();
 }
+function altaTransferenciaUSD(e) {
+    e.preventDefault();
+    const origenId=vGet('transfusd-origen'), destinoId=vGet('transfusd-destino'), monto=nGet('transfusd-monto'), fecha=vGet('transfusd-fecha');
+    if(String(origenId)===String(destinoId)){alert('Origen y destino no pueden ser iguales.');return;}
+    if(monto<=0){alert('Monto mayor a cero.');return;}
+    const orig=listaCuentasUSD.find(c=>String(c.id)===String(origenId))||listaTarjetasUSD.find(t=>String(t.id)===String(origenId));
+    const dest=listaCuentasUSD.find(c=>String(c.id)===String(destinoId))||listaTarjetasUSD.find(t=>String(t.id)===String(destinoId));
+    if(!orig||!dest){ alert('No se pudo identificar origen o destino. Probá recargar la página (Ctrl+Shift+R) e intentá de nuevo.'); return; }
+    orig.saldo-=monto; dest.saldo+=monto;
+    listaTransferenciasUSD.push({id:'tru_'+Date.now(),origenId,destinoId,monto,fecha,origenNombre:orig?.nombre||'?',destinoNombre:dest?.nombre||'?'});
+    guardar(); e.target.reset(); renderDolares();
+}
 // ELIMINACIONES USD
 function elimCuentaUSD(id)    { if(confirm('¿Remover cuenta USD?'))  { listaCuentasUSD=listaCuentasUSD.filter(c=>c.id!==id);       guardar(); renderDolares(); } }
 function elimTarjetaUSD(id)   { if(confirm('¿Remover tarjeta USD?')) { listaTarjetasUSD=listaTarjetasUSD.filter(t=>t.id!==id);     guardar(); renderDolares(); } }
 function elimServicioUSD(id)  { listaServiciosUSD=listaServiciosUSD.filter(s=>s.id!==id);                                          guardar(); renderDolares(); }
 function elimCorrienteUSD(id) { listaCorrientesUSD=listaCorrientesUSD.filter(x=>x.id!==id);                                       guardar(); renderDolares(); }
+function elimTransferenciaUSD(id) {
+    const t=listaTransferenciasUSD.find(x=>x.id===id);
+    if(t){ const o=listaCuentasUSD.find(c=>String(c.id)===String(t.origenId))||listaTarjetasUSD.find(x=>String(x.id)===String(t.origenId)); const d=listaCuentasUSD.find(c=>String(c.id)===String(t.destinoId))||listaTarjetasUSD.find(x=>String(x.id)===String(t.destinoId)); if(o) o.saldo+=t.monto; if(d) d.saldo-=t.monto; }
+    listaTransferenciasUSD=listaTransferenciasUSD.filter(x=>x.id!==id); guardar(); renderDolares();
+}
 
 
 function dibujarTorta(canvasId, leyId, items, fmtVal, coloresFijos) {
     const total = items.reduce(function(a,i){ return a+i.valor; }, 0);
     if (!total) return;
     const paleta = ['#4f46e5','#0284c7','#10b981','#f59e0b','#ef4444','#a855f7','#06b6d4','#f97316','#84cc16','#ec4899','#6366f1','#14b8a6'];
-    // Si hay colores fijos, no ordenar (mantener orden del caller); si no, ordenar por valor desc
-    const itemsOrd = coloresFijos ? items : items.slice().sort(function(a,b){ return b.valor-a.valor; });
+    // Emparejar cada item con su color (fijo o de paleta) ANTES de ordenar, para no perder la correspondencia
+    const itemsConColor = items.map(function(it,i){ return { item: it, color: coloresFijos ? coloresFijos[i] : paleta[i%paleta.length] }; });
+    // Ordenar torta y leyenda por monto, de mayor a menor
+    itemsConColor.sort(function(a,b){ return b.item.valor - a.item.valor; });
+    const itemsOrd = itemsConColor.map(function(x){ return x.item; });
+    const coloresOrd = itemsConColor.map(function(x){ return x.color; });
     setTimeout(function(){
         const tw = document.getElementById(canvasId); if(!tw) return;
         const cv = el('canvas'); cv.width=300; cv.height=300; tw.appendChild(cv);
         const ctx = cv.getContext('2d'); const cx=150,cy=150,r=120,ri=60; let ang=-Math.PI/2;
         itemsOrd.forEach(function(it,i){
-            const pct=it.valor/total, a2=ang+pct*2*Math.PI, col=coloresFijos?coloresFijos[i]:paleta[i%paleta.length];
+            const pct=it.valor/total, a2=ang+pct*2*Math.PI, col=coloresOrd[i];
             ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,ang,a2); ctx.closePath();
             ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.stroke();
             if(pct>0.05){ const ma=ang+(a2-ang)/2;
@@ -1937,7 +2104,7 @@ function dibujarTorta(canvasId, leyId, items, fmtVal, coloresFijos) {
         const ley = document.getElementById(leyId);
         if(ley){ ley.innerHTML=''; itemsOrd.forEach(function(it,i){
             const d=el('div'); d.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
-            d.innerHTML='<div style="width:12px;height:12px;border-radius:3px;background:'+(coloresFijos?coloresFijos[i]:paleta[i%paleta.length])+';flex-shrink:0;"></div>';
+            d.innerHTML='<div style="width:12px;height:12px;border-radius:3px;background:'+coloresOrd[i]+';flex-shrink:0;"></div>';
             const span1=el('span'); span1.style.cssText='font-size:12px;font-weight:bold;color:#1e293b;'; span1.innerText=it.label;
             const span2=el('span'); span2.style.cssText='font-size:11px;color:#64748b;'; span2.innerText=fmtVal(it.valor)+' · '+(it.valor/total*100).toFixed(1)+'%';
             d.appendChild(span1); d.appendChild(span2); ley.appendChild(d);
@@ -1982,7 +2149,7 @@ function buildPresupuesto() {
     const hdr = el('div');
     hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;padding-bottom:14px;border-bottom:3px solid #6d28d9;';
     const mes = new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-    hdr.innerHTML = '<div><h2 style="margin:0;font-size:22px;color:#1e293b;">🎯 Presupuesto Mensual</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">'+mes.charAt(0).toUpperCase()+mes.slice(1)+' · Edición directa en cada rubro</p></div>';
+    hdr.innerHTML = '<div><h2 style="margin:0;font-size:22px;color:#1e293b;display:flex;align-items:center;">🎯 Presupuesto Mensual'+btnAyuda('presupuesto')+'</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">'+mes.charAt(0).toUpperCase()+mes.slice(1)+' · Edición directa en cada rubro</p></div>';
     wrap.appendChild(hdr);
 
     // ── Calcular gastado por rubro (pesos) ──
@@ -2004,6 +2171,78 @@ function buildPresupuesto() {
     const totalPct    = totalPresup>0 ? Math.min(100,Math.round(totalGast/totalPresup*100)) : 0;
     const totalLib    = Math.max(0, totalPresup - totalGast);
     const totalExc    = totalGast > totalPresup && totalPresup>0 ? totalGast - totalPresup : 0;
+
+    // ── Ingresos del mes (informativo) vs Presupuesto — tarjeta compacta + modal ──
+    const mesActualYM = cfFechaLocal().slice(0,7);
+    const ingresosDelMes = listaIngresosPresup.filter(i=>(i.fecha||'').slice(0,7)===mesActualYM).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+    const totalIngresosPresup = ingresosDelMes.reduce((a,i)=>a+i.monto,0);
+    const balanceMes = totalIngresosPresup - totalPresup;
+    const esSuperavit = balanceMes >= 0;
+    const balColor = esSuperavit ? '#16a34a' : '#ef4444';
+    const balBg = esSuperavit ? '#f0fdf4' : '#fef2f2';
+    const balBorder = esSuperavit ? '#bbf7d0' : '#fecaca';
+    const lleno = ingresosDelMes.length>=4;
+
+    // Tarjeta compacta clickeable
+    let ingCard = '<div id="ip-card" onclick="abrirModalIngresoPresup()" style="cursor:pointer;background:'+balBg+';border:1px solid '+balBorder+';border-radius:10px;padding:16px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">';
+    ingCard += '<div><span style="font-size:11px;font-weight:bold;color:#6d28d9;text-transform:uppercase;letter-spacing:.05em;">💵 Ingresos del mes</span>';
+    ingCard += '<div id="ip-card-total" style="font-size:24px;font-weight:bold;color:#1e293b;margin-top:4px;">'+fmt(totalIngresosPresup)+'</div>';
+    ingCard += '<span id="ip-card-count" style="font-size:11px;color:#94a3b8;">'+ingresosDelMes.length+' de 4 registros · tocá para ver detalle</span></div>';
+    ingCard += '<div style="text-align:right;"><span id="ip-card-badge" style="font-size:10px;font-weight:bold;padding:3px 9px;border-radius:4px;background:'+balColor+'22;color:'+balColor+';">'+(esSuperavit?'SUPERÁVIT':'DÉFICIT')+'</span>';
+    ingCard += '<div id="ip-card-balance" style="font-size:14px;font-weight:bold;color:'+balColor+';margin-top:4px;">'+(esSuperavit?'+ ':'− ')+fmt(Math.abs(balanceMes))+'</div></div>';
+    ingCard += '</div>';
+    wrap.insertAdjacentHTML('beforeend', ingCard);
+
+    // Modal: detalle + alta de ingresos (no cierra al agregar/borrar, se refresca in-place)
+    let ingModal = '<div id="modal-ingreso-presup" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) cerrarModalIngresoPresup()">';
+    ingModal += '<div style="background:white;border-radius:12px;padding:24px;width:380px;max-width:90vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">';
+    ingModal += '<h3 style="margin:0 0 4px;color:#6d28d9;font-size:16px;">💵 Ingresos del mes</h3>';
+    ingModal += '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Informativo · no afecta cuentas bancarias</div>';
+
+    // Resumen balance dentro del modal
+    ingModal += '<div style="background:'+balBg+';border:1px solid '+balBorder+';border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+    ingModal += '<div><span style="font-size:10px;font-weight:bold;color:'+balColor+';text-transform:uppercase;">Balance vs. presupuesto</span>';
+    ingModal += '<div style="font-size:11px;color:#64748b;margin-top:2px;">Ingresos <b id="ip-modal-total">'+fmt(totalIngresosPresup)+'</b> · Presupuesto '+fmt(totalPresup)+'</div></div>';
+    ingModal += '<div style="text-align:right;"><div id="ip-modal-balance" style="font-size:18px;font-weight:bold;color:'+balColor+';">'+(esSuperavit?'+ ':'− ')+fmt(Math.abs(balanceMes))+'</div>';
+    ingModal += '<span id="ip-modal-badge" style="font-size:10px;font-weight:bold;padding:2px 8px;border-radius:4px;background:'+balColor+'22;color:'+balColor+';">'+(esSuperavit?'SUPERÁVIT':'DÉFICIT')+'</span></div>';
+    ingModal += '</div>';
+
+    // Lista de conceptos
+    ingModal += '<div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Conceptos cargados</div>';
+    ingModal += '<div id="ip-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">';
+    if(ingresosDelMes.length) {
+        ingresosDelMes.forEach(i=>{
+            const fechaCorta = i.fecha ? i.fecha.slice(8,10)+'/'+i.fecha.slice(5,7) : '—';
+            const tipoColor = i.tipo==='Variable' ? '#a855f7' : '#0284c7';
+            ingModal += '<div style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border:1px solid #f1f5f9;border-radius:8px;padding:8px 12px;">';
+            ingModal += '<div><b style="font-size:13px;color:#1e293b;">'+i.concepto+'</b>';
+            ingModal += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">'+fechaCorta+' · <span style="color:'+tipoColor+';font-weight:bold;">'+(i.tipo||'Fijo')+'</span></div></div>';
+            ingModal += '<div style="display:flex;align-items:center;gap:10px;">';
+            ingModal += '<b style="font-size:14px;color:#0284c7;">'+fmt(i.monto)+'</b>';
+            ingModal += '<button onclick="elimIngresoPresup(\''+i.id+'\')" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;">✕</button>';
+            ingModal += '</div></div>';
+        });
+    } else {
+        ingModal += '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:12px;">Sin ingresos cargados este mes.</div>';
+    }
+    ingModal += '</div>';
+
+    // Form de alta
+    ingModal += '<div style="border-top:1px dashed #e2e8f0;padding-top:14px;">';
+    ingModal += '<div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Agregar ingreso</div>';
+    ingModal += '<div style="margin-bottom:10px;"><input type="text" id="ip-concepto" placeholder="Concepto (Ej. Sueldo, VSS, clases...)" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box;"></div>';
+    ingModal += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+    ingModal += '<input type="number" id="ip-monto" min="0" step="1" placeholder="Monto $" style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box;">';
+    ingModal += '<input type="date" id="ip-fecha" style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box;">';
+    ingModal += '</div>';
+    ingModal += '<div style="margin-bottom:14px;"><select id="ip-tipo" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box;"><option value="Fijo">Fijo</option><option value="Variable">Variable</option></select></div>';
+    ingModal += '<div style="display:flex;gap:8px;justify-content:flex-end;">';
+    ingModal += '<button onclick="cerrarModalIngresoPresup()" style="padding:8px 16px;border:1px solid #cbd5e1;border-radius:6px;background:white;cursor:pointer;font-size:14px;">Cerrar</button>';
+    ingModal += '<button id="ip-add-btn" onclick="confirmarIngresoPresup()" '+(lleno?'disabled':'')+' style="padding:8px 20px;border:none;border-radius:6px;background:#6d28d9;color:white;cursor:'+(lleno?'not-allowed':'pointer')+';font-size:14px;font-weight:bold;opacity:'+(lleno?'0.5':'1')+';">＋ Agregar</button>';
+    ingModal += '</div></div>';
+
+    ingModal += '</div></div>';
+    wrap.insertAdjacentHTML('beforeend', ingModal);
 
     // ── Cards resumen ──
     const cardStyle = 'border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:4px;';
@@ -2083,8 +2322,9 @@ function buildPresupuesto() {
         const safeR = r.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
         card += '<div style="display:flex;align-items:center;gap:6px;">';
         card += '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;">Límite $</span>';
-        card += '<input type="number" min="0" step="1" value="'+(pres||'')+'" placeholder="Sin límite" ';
+        card += '<input type="text" inputmode="numeric" value="'+(pres?pres.toLocaleString('es-AR'):'')+'" placeholder="Sin límite" ';
         card += 'style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:white;color:#1e293b;" ';
+        card += 'oninput="this.value=this.value.replace(/\\D/g,\'\').replace(/\\B(?=(\\d{3})+(?!\\d))/g,\'.\')" ';
         card += 'data-rubro="'+safeR+'" onchange="actualizarPresupRubro(this)" onblur="actualizarPresupRubro(this)">';
         card += '</div>';
         card += '</div>';
@@ -2145,9 +2385,41 @@ function buildPresupuesto() {
 
 function buildReportes() {
     const wrap=el('div','container'); wrap.style.paddingTop='20px';
-    const hdr=el('div'); hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:12px;border-bottom:3px solid #4f46e5;';
-    hdr.innerHTML=`<div><h2 style="margin:0;font-size:22px;color:#1e293b;">📈 Reportes Financieros</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}</p></div><button onclick="exportarExcel()" class="btn no-print" style="font-size:12px;padding:8px 14px;background:#10b981;color:white;margin-right:6px;">📥 Exportar Excel</button><button onclick="window.print()" class="btn btn-dark no-print" style="font-size:12px;padding:8px 14px;">🖨️ Imprimir</button>`;
+
+    // ── Selector de mes: permite correr este reporte a demanda sobre un mes cerrado ──
+    const mesSel = reportesMesId ? historicoMeses.find(m=>m.id===reportesMesId) : null;
+    const opsMeses = '<option value="">📌 Mes Actual</option>' +
+        [...historicoMeses].reverse().map(m=>`<option value="${m.id}" ${m.id===reportesMesId?'selected':''}>🗂 ${m.nombre}</option>`).join('');
+    const selectorHtml = historicoMeses.length ? `<select onchange="cambiarMesReportes(this.value)" class="no-print" style="font-size:12px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;margin-right:8px;">${opsMeses}</select>` : '';
+    const excelBtn = mesSel
+        ? `<button disabled title="Exportar Excel solo está disponible para el Mes Actual. Para históricos, usá el Excel de Resumen Anual." class="btn no-print" style="font-size:12px;padding:8px 14px;background:#cbd5e1;color:white;margin-right:6px;cursor:not-allowed;">📥 Exportar Excel</button>`
+        : `<button onclick="exportarExcel()" class="btn no-print" style="font-size:12px;padding:8px 14px;background:#10b981;color:white;margin-right:6px;">📥 Exportar Excel</button>`;
+
+    const hdr=el('div'); hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:12px;border-bottom:3px solid #4f46e5;';
+    hdr.innerHTML=`<div><h2 style="margin:0;font-size:22px;color:#1e293b;">📈 Reportes Financieros${mesSel?' · <span style="color:#7c3aed;">'+mesSel.nombre+'</span>':''}</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">${mesSel?'Vista de sólo lectura del período cerrado':new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}</p></div><div class="no-print" style="display:flex;align-items:center;">${selectorHtml}${excelBtn}<button onclick="window.print()" class="btn btn-dark no-print" style="font-size:12px;padding:8px 14px;">🖨️ Imprimir</button></div>`;
     wrap.appendChild(hdr);
+
+    // Valores EN VIVO — se guardan antes de eventualmente pisarlos con el snapshot del mes cerrado.
+    // El reporte 2 (tendencia por rubro entre meses) siempre debe mostrar el mes actual real, sin importar la selección.
+    const liveBancos=listaBancos, liveTarjetas=listaTarjetas, liveServicios=listaServicios,
+          liveCorrientes=listaCorrientes, liveCorrientesUSD=listaCorrientesUSD, liveCuentasUSD=listaCuentasUSD,
+          liveTarjetasUSD=listaTarjetasUSD, liveServiciosUSD=listaServiciosUSD, liveRubros=listaRubros, liveTipoCambio=tipoCambio;
+
+    if(mesSel){
+        const d = mesSel.datos || {};
+        listaBancos = d.listaBancos || [];
+        listaTarjetas = d.listaTarjetas || [];
+        listaServicios = d.listaServicios || [];
+        listaCorrientes = d.listaCorrientes || [];
+        listaCorrientesUSD = d.listaCorrientesUSD || [];
+        listaCuentasUSD = d.listaCuentasUSD || [];
+        listaTarjetasUSD = d.listaTarjetasUSD || [];
+        listaServiciosUSD = d.listaServiciosUSD || [];
+        tipoCambio = d.tipoCambio || liveTipoCambio;
+        // listaRubros queda igual: es configuración actual, no se congela por mes
+    }
+
+    try {
 
     // ── REPORTE 1 ──────────────────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#4f46e5;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 1 · Resumen del Mes Actual</h3>');
@@ -2294,7 +2566,7 @@ function buildReportes() {
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#f59e0b;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 2 · Análisis por Rubro · Últimos 12 Meses</h3>');
     const ultimos12=[...historicoMeses].slice(-12);
     const mesesData=ultimos12.map(m=>({nombre:m.nombre,datos:m.datos}));
-    mesesData.push({nombre:'Mes Actual',datos:{listaCorrientes,listaServicios,listaRubros}});
+    mesesData.push({nombre:'Mes Actual',datos:{listaCorrientes:liveCorrientes,listaServicios:liveServicios,listaRubros:liveRubros}});
     const todosRub2=new Set();
     mesesData.forEach(m=>{
         (m.datos.listaCorrientes||[]).filter(c=>c.fechaPago&&!(c.rubro&&c.rubro.toLowerCase().includes('tarjeta'))).forEach(c=>todosRub2.add(c.rubro));
@@ -2405,7 +2677,19 @@ function buildReportes() {
     }
 
     wrap.insertAdjacentHTML('beforeend', rO);
+
+    } finally {
+        // Restaurar siempre los valores en vivo, incluso si algo falló arriba
+        listaBancos=liveBancos; listaTarjetas=liveTarjetas; listaServicios=liveServicios; listaCorrientes=liveCorrientes;
+        listaCorrientesUSD=liveCorrientesUSD; listaCuentasUSD=liveCuentasUSD; listaTarjetasUSD=liveTarjetasUSD; listaServiciosUSD=liveServiciosUSD;
+        tipoCambio=liveTipoCambio;
+    }
+
     return wrap;
+}
+function cambiarMesReportes(id) {
+    reportesMesId = id || null;
+    renderContenido();
 }
 
 // ═══════════════════════════════════════════
@@ -2903,32 +3187,52 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.61-dev2';
+const APP_VERSION = 'v3.7.74-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
-const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.readonly'
+const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
+const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
+let _cfFolderId = null;
 const CF_GMAIL_PROCESSED_KEY = CF_NS+'cf_gmail_processed';
 const GTOKEN_KEY=CF_NS+'cf_gtoken';
 const GTOKEN_EXP_KEY=CF_NS+'cf_gtoken_exp';
+const GTOKEN_SCOPE_KEY=CF_NS+'cf_gtoken_scope_v';
+const GTOKEN_SCOPE_VERSION='2'; // v2: carpeta visible "ControlFinanciero" (drive.file) en vez de appDataFolder oculta
 let gToken=null;
 let _alertasMostradas=false;
 
 // Persistencia de token en localStorage con expiración
 function gTokenGuardar(token, expiresInSec) {
     const exp = Date.now() + (expiresInSec||3500)*1000;
-    try { localStorage.setItem(GTOKEN_KEY, token); localStorage.setItem(GTOKEN_EXP_KEY, String(exp)); } catch(e){}
+    try { localStorage.setItem(GTOKEN_KEY, token); localStorage.setItem(GTOKEN_EXP_KEY, String(exp)); localStorage.setItem(GTOKEN_SCOPE_KEY, GTOKEN_SCOPE_VERSION); } catch(e){}
     gToken = token;
 }
 function gTokenCargarLocal() {
     try {
         const t = localStorage.getItem(GTOKEN_KEY);
         const exp = parseInt(localStorage.getItem(GTOKEN_EXP_KEY)||'0');
-        if(t && exp && Date.now() < exp - 60000) { gToken = t; return true; }
+        const scopeV = localStorage.getItem(GTOKEN_SCOPE_KEY);
+        // Token viejo (scope appDataFolder) no sirve para la carpeta visible: se descarta y se re-pide consentimiento
+        if(t && exp && Date.now() < exp - 60000 && scopeV === GTOKEN_SCOPE_VERSION) { gToken = t; return true; }
     } catch(e){}
     return false;
 }
 function gTokenLimpiar() {
     gToken = null;
-    try { localStorage.removeItem(GTOKEN_KEY); localStorage.removeItem(GTOKEN_EXP_KEY); } catch(e){}
+    try { localStorage.removeItem(GTOKEN_KEY); localStorage.removeItem(GTOKEN_EXP_KEY); localStorage.removeItem(GTOKEN_SCOPE_KEY); } catch(e){}
+}
+
+// Busca (o crea) la carpeta visible "ControlFinanciero" en el Drive del usuario
+// Busca (solo lectura) la carpeta visible "ControlFinanciero" en el Drive del usuario.
+// A diferencia de producción, DEV nunca crea la carpeta: si no existe todavía,
+// significa que no se subió ningún backup real desde producción.
+function driveEnsureFolder(token, cb) {
+    if(_cfFolderId){ cb(_cfFolderId); return; }
+    const q = encodeURIComponent(`name='${CF_DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,{headers:{Authorization:'Bearer '+token}})
+    .then(r=>r.json()).then(data=>{
+        if(data.files && data.files.length){ _cfFolderId = data.files[0].id; cb(_cfFolderId); return; }
+        alert('No se encontró la carpeta "ControlFinanciero" en Drive todavía — subí un backup desde producción primero.');
+    }).catch(()=>{});
 }
 
 function driveCargarGoogle(cb) {
@@ -2966,7 +3270,7 @@ function _driveSubir_DISABLED_ORIGINAL() {
     driveGetToken(token=>{
         const a=new Date(), ts=a.getFullYear()+String(a.getMonth()+1).padStart(2,'0')+String(a.getDate()).padStart(2,'0')+'_'+String(a.getHours()).padStart(2,'0')+String(a.getMinutes()).padStart(2,'0');
         const nombre='backup_finanzas_'+ts+'.json';
-        const data=JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos});
+        const data=JSON.stringify({listaBancos,listaTarjetas,listaServicios,listaCorrientes,listaRubros,listaTransferencias,listaCuotas,historicoMeses,listaCuentasUSD,listaTarjetasUSD,listaServiciosUSD,listaCorrientesUSD,tipoCambio,listaInstrumentos,listaAcciones,listaPresupRubros,listaPresupRubrosUSD,listaRubrosUSD,listaIngresos,listaIngresosPresup});
         const meta=JSON.stringify({name:nombre,parents:['appDataFolder']});
         const form=new FormData();
         form.append('metadata',new Blob([meta],{type:'application/json'}));
@@ -2978,12 +3282,15 @@ function _driveSubir_DISABLED_ORIGINAL() {
 }
 function driveRestaurar() {
     driveGetToken(token=>{
-        fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&orderBy=modifiedTime+desc&pageSize=50',{headers:{Authorization:'Bearer '+token}})
-        .then(r=>r.json()).then(data=>{
-            // Listar todos los backups: manuales + autosync
-            const arch=(data.files||[]).filter(f=>f.name.startsWith('backup_'));
-            mostrarModalDrive(arch,token);
-        }).catch(e=>{alert('Error al listar Drive: '+e.message);gTokenLimpiar();});
+        driveEnsureFolder(token, folderId=>{
+            const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+            fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime+desc&pageSize=50`,{headers:{Authorization:'Bearer '+token}})
+            .then(r=>r.json()).then(data=>{
+                // Listar todos los backups: manuales + autosync
+                const arch=(data.files||[]).filter(f=>f.name.startsWith('backup_'));
+                mostrarModalDrive(arch,token);
+            }).catch(e=>{alert('Error al listar Drive: '+e.message);gTokenLimpiar();});
+        });
     });
 }
 function mostrarModalDrive(arch,token) {
@@ -3934,30 +4241,40 @@ function limpiarCache() {
 
 
 // ════════════════════════════════════════════════════
-//  MÓDULO GMAIL API · Control Financiero v2
+//  MÓDULO GMAIL API · Control Financiero Producción
 //  Detección automática mails Santander
 // ════════════════════════════════════════════════════
 
-const CF_SANTANDER_QUERY = '(subject:(Pagaste OR "débito automático" OR "débito con tu") OR from:info@mercadopago.com) newer_than:30d';
+const CF_SANTANDER_QUERY = '(subject:(Pagaste OR "débito automático" OR "débito con tu") OR from:info@mercadopago.com OR (from:eduardo.bodega@gmail.com has:attachment)) newer_than:30d';
+const CF_COMPROBANTE_REMITENTE = 'eduardo.bodega@gmail.com';
 
 function cfEsMovil() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
 }
 
+// Los IDs se guardan con timestamp para podar por antigüedad en vez de por cantidad fija:
+// así nunca se "cae" del registro un ID que todavía podría reaparecer en la búsqueda de
+// Gmail (que mira los últimos 30 días) y el mail no vuelve a mostrarse como si fuera nuevo.
+const CF_GMAIL_PROCESSED_DIAS = 45; // > 30 días de la query, con margen
+
 function cfGmailGetProcessed() {
-    try { return JSON.parse(localStorage.getItem(CF_GMAIL_PROCESSED_KEY)) || []; } catch(e) { return []; }
+    let lista;
+    try { lista = JSON.parse(localStorage.getItem(CF_GMAIL_PROCESSED_KEY)) || []; } catch(e) { return []; }
+    const ahora = Date.now();
+    lista = lista.map(x => typeof x === 'string' ? { id: x, ts: ahora } : x); // migración formato viejo
+    const limite = ahora - CF_GMAIL_PROCESSED_DIAS * 86400000;
+    return lista.filter(x => x.ts >= limite);
 }
 
 function cfGmailMarkProcessed(id) {
     const lista = cfGmailGetProcessed();
-    if (!lista.includes(id)) {
-        lista.push(id);
-        if (lista.length > 100) lista.splice(0, lista.length - 100);
+    if (!lista.some(x => x.id === id)) {
+        lista.push({ id, ts: Date.now() });
         try { localStorage.setItem(CF_GMAIL_PROCESSED_KEY, JSON.stringify(lista)); } catch(e) {}
     }
 }
 
-function cfGmailIsProcessed(id) { return cfGmailGetProcessed().includes(id); }
+function cfGmailIsProcessed(id) { return cfGmailGetProcessed().some(x => x.id === id); }
 
 function cfGmailDecodeBody(encoded) {
     try {
@@ -3978,9 +4295,8 @@ function cfGmailExtraerTexto(payload) {
                 return cfGmailDecodeBody(part.body.data);
         }
         for (const part of payload.parts) {
-            if (part.mimeType === 'text/html' && part.body && part.body.data) {
+            if (part.mimeType === 'text/html' && part.body && part.body.data)
                 return cfGmailDecodeBody(part.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-            }
             if (part.parts) { const sub = cfGmailExtraerTexto(part); if (sub) return sub; }
         }
     }
@@ -3991,46 +4307,26 @@ function cfParsearMailSantander(texto) {
     if (!texto) return null;
     const esSantander = /santander/i.test(texto) && /monto|consumo|d.?bito/i.test(texto);
     if (!esSantander) return null;
-
     const t = texto.replace(/\*/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const resultado = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Tarjeta', tipo: 'gasto' };
-
     const rUSD = /Monto\s*(?:\n\s*)?U\$S\s?([\d.,]+)/i.exec(t);
     const rARS = /Monto\s*(?:\n\s*)?\$([\d.,]+)/i.exec(t);
     if (rUSD) { resultado.moneda = 'USD'; resultado.monto = parseFloat(rUSD[1].replace(/\./g,'').replace(',','.')); }
     else if (rARS) { resultado.moneda = 'ARS'; resultado.monto = parseFloat(rARS[1].replace(/\./g,'').replace(',','.')); }
-
     const rCuotas  = /Cuotas\s*(?:\n\s*)?(\d+)/i.exec(t);
     if (rCuotas) resultado.cuotas = parseInt(rCuotas[1]);
-
     const rComercio = /Comercio\s*(?:\n\s*)?([A-ZÁÉÍÓÚÑ0-9 .*\-&]+)/i.exec(t);
     if (rComercio) resultado.comercio = rComercio[1].trim();
-
     const rFecha = /Fecha\s*(?:\n\s*)?(\d{2})\/(\d{2})\/(\d{4})/i.exec(t);
     if (rFecha) resultado.fecha = `${rFecha[3]}-${rFecha[2]}-${rFecha[1]}`;
-
     const rHora = /Hora\s*(?:\n\s*)?(\d{2}:\d{2})/i.exec(t);
     if (rHora) resultado.hora = rHora[1];
-
     const rTarjeta = /terminada en (\d{4})/i.exec(t);
     if (rTarjeta) resultado.tarjeta = rTarjeta[1];
-
     if (/american express|amex/i.test(t)) resultado.tipo_tarjeta = 'Amex';
     else if (/visa/i.test(t)) resultado.tipo_tarjeta = 'Visa Crédito';
-
     resultado.tipo = (resultado.cuotas && resultado.cuotas > 1) ? 'cuota' : 'gasto';
     return resultado;
-}
-
-const CF_MP_TRANSFER_RUBROS = {
-    'carlos alfredo irrera': 'Sodero',
-    'miguel angel torres': 'Jardinero',
-    'edgardo sebastian soria': 'Delivery',
-    'elvira reina tito': 'Carnicería / Verdulería'
-};
-
-function cfNormalizarNombre(s) {
-    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
 function cfParsearMailMercadoPago(texto) {
@@ -4054,6 +4350,49 @@ function cfParsearMailMercadoPago(texto) {
     return resultado;
 }
 
+const CF_MP_TRANSFER_RUBROS = {
+    'carlos alfredo irrera': 'Sodero',
+    'miguel angel torres': 'Jardinero',
+    'edgardo sebastian soria': 'Delivery',
+    'elvira reina tito': 'Carnicería / Verdulería'
+};
+
+function cfNormalizarNombre(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function cfGmailHeader(payload, nombre) {
+    if (!payload || !payload.headers) return '';
+    const h = payload.headers.find(x => x.name && x.name.toLowerCase() === nombre.toLowerCase());
+    return h ? h.value : '';
+}
+
+function cfGmailBuscarAdjunto(payload) {
+    if (!payload) return null;
+    if (payload.body && payload.body.attachmentId && payload.filename) {
+        return { attachmentId: payload.body.attachmentId, mimeType: payload.mimeType || '', filename: payload.filename };
+    }
+    if (payload.parts) {
+        for (const part of payload.parts) {
+            const r = cfGmailBuscarAdjunto(part);
+            if (r) return r;
+        }
+    }
+    return null;
+}
+
+function cfGmailB64UrlToB64(s) {
+    return s.replace(/-/g, '+').replace(/_/g, '/');
+}
+
+async function cfGmailDescargarAdjunto(token, messageId, attachmentId) {
+    const resp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+        { headers: { Authorization: 'Bearer ' + token } });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data && data.data ? cfGmailB64UrlToB64(data.data) : null;
+}
+
 function cfParsearMailMercadoPagoTransferencia(texto) {
     if (!texto) return null;
     const esTransf = /ya enviamos tu transferencia/i.test(texto);
@@ -4072,19 +4411,36 @@ function cfParsearMailMercadoPagoTransferencia(texto) {
 
 async function cfGmailBuscarGastos(token) {
     const query = encodeURIComponent(CF_SANTANDER_QUERY);
-    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=10`;
-    const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const resp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=20`, { headers: { Authorization: 'Bearer ' + token } });
     if (!resp.ok) { console.error('[CF Gmail] Error:', resp.status); return []; }
     const data = await resp.json();
     if (!data.messages || !data.messages.length) return [];
-
     const gastos = [];
     for (const msg of data.messages) {
         if (cfGmailIsProcessed(msg.id)) continue;
-        const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
-            { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
+        const det = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
         const texto = cfGmailExtraerTexto(det.payload);
-        const datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
+        let datos = cfParsearMailSantander(texto) || cfParsearMailMercadoPago(texto) || cfParsearMailMercadoPagoTransferencia(texto);
+
+        // Sin match de texto: si es un reenvío tuyo con adjunto, tratarlo como comprobante manual
+        if (!datos) {
+            const from = cfGmailHeader(det.payload, 'From');
+            const esReenvioComprobante = from && from.toLowerCase().includes(CF_COMPROBANTE_REMITENTE);
+            if (esReenvioComprobante) {
+                const adj = cfGmailBuscarAdjunto(det.payload);
+                if (adj) {
+                    const b64 = await cfGmailDescargarAdjunto(token, msg.id, adj.attachmentId);
+                    if (b64) {
+                        datos = { moneda: 'ARS', monto: null, comercio: '', fecha: '', hora: '', cuotas: null, tarjeta: '', tipo_tarjeta: 'Transferencia', tipo: 'gasto', origen: 'Comprobante MP' };
+                        const rubro = CF_MP_TRANSFER_RUBROS[cfNormalizarNombre(texto)];
+                        if (rubro) datos.rubroSugerido = rubro;
+                        datos._attachmentDataUrl = `data:${adj.mimeType || 'image/jpeg'};base64,${b64}`;
+                        datos._attachmentEsPdf = /pdf/i.test(adj.mimeType || '');
+                    }
+                }
+            }
+        }
+
         if (datos) {
             if (!datos.fecha && det.internalDate) {
                 const d = new Date(parseInt(det.internalDate));
@@ -4097,33 +4453,14 @@ async function cfGmailBuscarGastos(token) {
     return gastos;
 }
 
-let cfGmailQueue = [];
-let cfGmailIdx   = 0;
-
 function cfGmailYaRegistrado(datos) {
-    // Verificar por contenido: mismo monto + misma fecha + mismo comercio aproximado
     const needle = (datos.comercio || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 10);
     const fecha  = datos.fecha || '';
     const monto  = datos.monto || 0;
-
-    const enARS = listaCorrientes.some(c =>
-        Math.abs(c.monto - monto) < 0.01 &&
-        c.fechaPago === fecha &&
-        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
-    );
-    const enUSD = listaCorrientesUSD.some(c =>
-        Math.abs(c.monto - monto) < 0.01 &&
-        c.fechaPago === fecha &&
-        (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
-    );
-    const enServ = listaServicios.some(s =>
-        Math.abs((s.pagado || 0) - monto) < 0.01 &&
-        s.fPago === fecha
-    );
-    const enServUSD = listaServiciosUSD.some(s =>
-        Math.abs((s.pagado || 0) - monto) < 0.01 &&
-        s.fPago === fecha
-    );
+    const enARS = listaCorrientes.some(c => Math.abs(c.monto - monto) < 0.01 && c.fechaPago === fecha && (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle));
+    const enUSD = listaCorrientesUSD.some(c => Math.abs(c.monto - monto) < 0.01 && c.fechaPago === fecha && (c.detalle || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle));
+    const enServ = listaServicios.some(s => Math.abs((s.pagado || 0) - monto) < 0.01 && s.fPago === fecha);
+    const enServUSD = listaServiciosUSD.some(s => Math.abs((s.pagado || 0) - monto) < 0.01 && s.fPago === fecha);
     return enARS || enUSD || enServ || enServUSD;
 }
 
@@ -4132,7 +4469,7 @@ function cfBuscarServicioMatch(comercio, esUSD) {
     if (!comercio || !lista || !lista.length) return null;
     const needle = comercio.toLowerCase().replace(/[^a-z0-9]/g, '');
     return lista.find(s => {
-        if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false; // ya pagado
+        if (s.pagado >= s.presupuesto && s.presupuesto > 0) return false;
         const hay = (s.nombre || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         if (needle.length >= 4 && hay.includes(needle.substring(0, Math.min(needle.length, 8)))) return true;
         if (hay.length >= 4 && needle.includes(hay.substring(0, Math.min(hay.length, 8)))) return true;
@@ -4140,11 +4477,13 @@ function cfBuscarServicioMatch(comercio, esUSD) {
     }) || null;
 }
 
+let cfGmailQueue = [];
+let cfGmailIdx   = 0;
+let cfGmailDatosActual = null; // mail atado al modal actualmente abierto (no depende del índice de la cola)
+
 function cfGmailMostrarSiguiente() {
     if (cfGmailIdx >= cfGmailQueue.length) return;
     const datos = cfGmailQueue[cfGmailIdx];
-
-    // Saltar si ya fue registrado por contenido (evita duplicados por reenvío manual)
     if (cfGmailYaRegistrado(datos)) {
         console.log('[CF Gmail] Duplicado detectado, saltando:', datos.comercio, datos.fecha);
         if (datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
@@ -4152,7 +4491,6 @@ function cfGmailMostrarSiguiente() {
         if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 200);
         return;
     }
-
     const servicioMatch = cfBuscarServicioMatch(datos.comercio, datos.moneda === 'USD');
     if (servicioMatch) {
         cfAbrirModalPagoServicio(datos, servicioMatch);
@@ -4177,6 +4515,7 @@ function cfGmailLoginYChequear() {
 }
 
 async function cfGmailChequear(manual = false) {
+    if (document.getElementById('cf-gmail-overlay')) return; // no pisar la cola mientras hay un modal abierto
     if (cfEsMovil() && !manual) return; // en mobile solo corre si es chequeo manual (ej. tras login desde 🔍 Pendientes)
     if (manual) cfGmailToast('🔄 Revisando mails...');
     if (!gTokenCargarLocal()) {
@@ -4213,6 +4552,7 @@ async function cfGmailChequear(manual = false) {
 // Botón "🔍 Pendientes" — chequeo manual, habilitado también en mobile.
 // Usa el token existente sin forzar relogin; si no hay token válido, pide login (una vez).
 async function cfRevisarPendientes() {
+    if (document.getElementById('cf-gmail-overlay')) { cfGmailToast('⏳ Terminá de revisar el mail actual primero.'); return; }
     cfGmailToast('🔄 Revisando mails pendientes...');
     if (!gTokenCargarLocal()) {
         const renovado = await new Promise(resolve => {
@@ -4337,7 +4677,9 @@ function elimPagoTarjeta(id) {
     listaPagosTarjeta = listaPagosTarjeta.filter(x => x.id !== id);
     guardar(); render();
 }
-function cfAbrirModalPagoServicio(datos, servicio) {
+function abrirModalPagoTarjetaUSD(tarjetaId) {
+    const t = listaTarjetasUSD.find(x => x.id === tarjetaId);
+    if (!t) return;
     const prev = document.getElementById('cf-gmail-overlay');
     if (prev) prev.remove();
 
@@ -4346,8 +4688,83 @@ function cfAbrirModalPagoServicio(datos, servicio) {
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
 
     const fechaHoy = cfFechaLocal();
-    const montoPago = datos.monto ? datos.monto.toFixed(2) : (servicio.presupuesto || 0).toFixed(2);
+    const opsCuentas = listaCuentasUSD.map(c => `<option value="${c.id}">🏦 ${c.nombre} (${fmtUSD(c.saldo)})</option>`).join('');
 
+    overlay.innerHTML = `
+    <div style="background:#1e293b;border-radius:14px;width:100%;max-width:420px;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
+            <span style="font-size:24px;">💳</span>
+            <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Pagar tarjeta USD</h3>
+        </div>
+        <div style="background:#0f172a;border-radius:8px;padding:10px 12px;margin-bottom:14px;border-left:3px solid #a855f7;">
+            <div style="font-size:13px;font-weight:700;color:#f1f5f9;">${t.nombre}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">Deuda actual: ${fmtUSD(t.saldo||0)}</div>
+        </div>
+        ${!listaCuentasUSD.length ? '<div style="font-size:12px;color:#fca5a5;margin-bottom:14px;">No hay cuentas USD cargadas. Registrá una cuenta USD primero.</div>' : `
+        <div style="margin-bottom:11px;">
+            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Sale de la cuenta</label>
+            <select id="cf-ptu-cuenta" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">${opsCuentas}</select>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+            <div style="flex:1;">
+                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto (USD)</label>
+                <input type="number" id="cf-ptu-monto" step="0.01" value="${Math.round((t.saldo||0)*100)/100}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha</label>
+                <input type="date" id="cf-ptu-fecha" value="${fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button onclick="confirmarPagoTarjetaUSD('${t.id}')" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#a855f7;color:white;cursor:pointer;">✓ Confirmar pago</button>
+        </div>`}
+        <div style="display:flex;gap:8px;">
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+function confirmarPagoTarjetaUSD(tarjetaId) {
+    const t = listaTarjetasUSD.find(x => x.id === tarjetaId);
+    if (!t) return;
+    const cuentaId = vGet('cf-ptu-cuenta');
+    const monto = parseFloat(document.getElementById('cf-ptu-monto').value) || 0;
+    const fecha = document.getElementById('cf-ptu-fecha').value || cfFechaLocal();
+    if (!cuentaId) { alert('Elegí una cuenta USD de origen.'); return; }
+    if (monto <= 0) { alert('El monto no es válido.'); return; }
+    const cuenta = listaCuentasUSD.find(c => c.id === cuentaId);
+    if (!cuenta) { alert('Cuenta USD no encontrada.'); return; }
+
+    cuenta.saldo -= monto;
+    t.saldo -= monto;
+    listaPagosTarjetaUSD.push({ id: 'ptu_' + Date.now(), tarjetaId: t.id, tarjetaNombre: t.nombre, cuentaId, cuentaNombre: cuenta.nombre, monto, fecha });
+
+    guardar();
+    cfCerrarModalGasto();
+    renderDolares();
+    cfGmailToast('✅ ' + t.nombre + ' -' + fmtUSD(monto));
+}
+function elimPagoTarjetaUSD(id) {
+    const p = listaPagosTarjetaUSD.find(x => x.id === id);
+    if (!p) return;
+    if (!confirm('¿Deshacer este pago? Se revierte el monto a la cuenta USD y a la tarjeta.')) return;
+    const cuenta = listaCuentasUSD.find(c => c.id === p.cuentaId);
+    const tarjeta = listaTarjetasUSD.find(t => t.id === p.tarjetaId);
+    if (cuenta) cuenta.saldo += p.monto;
+    if (tarjeta) tarjeta.saldo += p.monto;
+    listaPagosTarjetaUSD = listaPagosTarjetaUSD.filter(x => x.id !== id);
+    guardar(); renderDolares();
+}
+function cfAbrirModalPagoServicio(datos, servicio) {
+    cfGmailDatosActual = datos;
+    const prev = document.getElementById('cf-gmail-overlay');
+    if (prev) prev.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'cf-gmail-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    const fechaHoy = cfFechaLocal();
+    const montoPago = datos.monto ? datos.monto.toFixed(2) : (servicio.presupuesto || 0).toFixed(2);
     overlay.innerHTML = `
     <div style="background:#1e293b;border-radius:14px;width:100%;max-width:420px;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
@@ -4360,19 +4777,12 @@ function cfAbrirModalPagoServicio(datos, servicio) {
             <div style="font-size:11px;color:#64748b;margin-top:2px;">Presupuesto: $${(servicio.presupuesto||0).toLocaleString('es-AR')} · Pagado: $${(servicio.pagado||0).toLocaleString('es-AR')}</div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto pagado</label>
-                <input type="number" id="cf-gm-srv-monto" step="0.01" value="${montoPago}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha de pago</label>
-                <input type="date" id="cf-gm-srv-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto pagado</label>
+            <input type="number" id="cf-gm-srv-monto" step="0.01" value="${montoPago}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha de pago</label>
+            <input type="date" id="cf-gm-srv-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">
-            Comercio detectado: <span style="color:#94a3b8;font-weight:600;">${datos.comercio}</span> · 
-            ${datos.tipo_tarjeta} terminada en ${datos.tarjeta}
-        </div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">Comercio: <span style="color:#94a3b8;font-weight:600;">${datos.comercio}</span> · ${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
             <button onclick="cfConfirmarPagoServicio('${servicio.id}')" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#0f766e;color:white;cursor:pointer;">✓ Asentar pago</button>
         </div>
@@ -4380,141 +4790,35 @@ function cfAbrirModalPagoServicio(datos, servicio) {
             <button onclick="cfModalPagoACorriente()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">↩ Registrar como gasto corriente</button>
             <button onclick="cfCerrarModalGasto()" style="flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:600;border:1.5px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer;">✕ Cancelar</button>
         </div>
+        <button onclick="cfDescartarDefinitivo()" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;font-size:11.5px;font-weight:600;border:1px dashed #64748b;background:transparent;color:#94a3b8;cursor:pointer;">🚫 Descartar definitivamente (no volver a mostrar este mail)</button>
     </div>`;
-
     document.body.appendChild(overlay);
 }
 
 function cfConfirmarPagoServicio(servicioId) {
     const monto = parseFloat(document.getElementById('cf-gm-srv-monto').value);
     const fecha = document.getElementById('cf-gm-srv-fecha').value;
-
     if (isNaN(monto) || monto <= 0) { alert('El monto no es válido.'); return; }
-
     let s = listaServicios.find(x => x.id === servicioId);
     let esUSD = false;
     if (!s) { s = listaServiciosUSD.find(x => x.id === servicioId); esUSD = true; }
     if (!s) { alert('Servicio no encontrado.'); return; }
-
     s.pagado = monto;
     s.fPago  = fecha;
     guardar();
     if (esUSD) { if (typeof renderDolares === 'function') renderDolares(); }
     else { render(); }
-
-    const datos = cfGmailQueue[cfGmailIdx];
+    const datos = cfGmailDatosActual;
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
     const ov = document.getElementById('cf-gmail-overlay');
     if (ov) ov.remove();
-
     cfGmailIdx++;
     if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 600);
 }
 
 function cfModalPagoACorriente() {
-    // El usuario prefiere registrar como gasto corriente aunque haya match
-    const datos = cfGmailQueue[cfGmailIdx];
+    const datos = cfGmailDatosActual;
     cfAbrirModalGasto(datos);
-}
-
-function cfAbrirModalGasto(datos) {
-    const prev = document.getElementById('cf-gmail-overlay');
-    if (prev) prev.remove();
-
-    // Seleccionar lista de tarjetas según moneda
-    const esUSD = datos.moneda === 'USD';
-    const listaTarjetasActual = esUSD ? listaTarjetasUSD : listaTarjetas;
-
-    // Detectar tarjeta → medioPagoId
-    let medioPagoId = '';
-    if (datos.tipo_tarjeta) {
-        const tipo = datos.tipo_tarjeta.toLowerCase();
-        const num  = datos.tarjeta || '';
-        let tarjeta = listaTarjetasActual.find(t => num && t.nombre && t.nombre.includes(num));
-        if (!tarjeta) {
-            if (tipo.includes('amex') || tipo.includes('american'))
-                tarjeta = listaTarjetasActual.find(t => /amex|american/i.test(t.nombre));
-            else if (tipo.includes('visa'))
-                tarjeta = listaTarjetasActual.find(t => /visa/i.test(t.nombre));
-        }
-        if (!tarjeta) tarjeta = listaTarjetasActual.find(t => /santander/i.test(t.nombre));
-        if (tarjeta) medioPagoId = tarjeta.id;
-    }
-
-    // Opciones de tarjetas según moneda
-    const opsTarjetas = listaTarjetasActual.map(t =>
-        `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`
-    ).join('');
-
-    // Opciones de rubros según moneda
-    const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
-    const opsRubros = listaRubrosActual.map(r =>
-        `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`
-    ).join('');
-
-    const fechaHoy = cfFechaLocal();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'cf-gmail-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
-
-    overlay.innerHTML = `
-    <div style="background:#1e293b;border-radius:14px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
-            <span style="font-size:24px;">📧</span>
-            <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Gasto detectado</h3>
-            <span style="font-size:10px;background:#ea4335;color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
-        </div>
-        ${(!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
-        <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto</label>
-                <input type="number" id="cf-gm-monto" step="0.01" value="${datos.monto ? datos.monto.toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Moneda</label>
-                <select id="cf-gm-moneda" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                    <option value="ARS" ${datos.moneda==='ARS'?'selected':''}>$ ARS</option>
-                    <option value="USD" ${datos.moneda==='USD'?'selected':''}>U$S USD</option>
-                </select>
-            </div>
-        </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Comercio / Detalle</label>
-            <input type="text" id="cf-gm-detalle" value="${datos.comercio || ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            <div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tipo_tarjeta} terminada en ${datos.tarjeta}</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:11px;">
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha</label>
-                <input type="date" id="cf-gm-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-                <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Cuotas</label>
-                <input type="number" id="cf-gm-cuotas" min="1" max="72" value="${datos.cuotas || 1}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-            </div>
-        </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Rubro</label>
-            <select id="cf-gm-rubro" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                <option value="">— Seleccioná rubro —</option>
-                ${opsRubros}
-            </select>
-        </div>
-        <div style="margin-bottom:11px;">
-            <label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Medio de pago</label>
-            <select id="cf-gm-medio" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
-                <option value="">— Seleccioná tarjeta —</option>
-                ${opsTarjetas}
-            </select>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:16px;">
-            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#f1f5f9;cursor:pointer;">✕ Cancelar</button>
-            <button onclick="cfConfirmarGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#4f46e5;color:white;cursor:pointer;">✓ Registrar gasto</button>
-        </div>
-    </div>`;
-
-    document.body.appendChild(overlay);
 }
 
 function cfCerrarModalGasto() {
@@ -4526,6 +4830,101 @@ function cfCerrarModalGasto() {
     if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
 }
 
+function cfDescartarDefinitivo() {
+    // A diferencia de Cancelar: acá sí marcamos el mail como procesado,
+    // para que este mail puntual no vuelva a aparecer nunca más.
+    const datos = cfGmailDatosActual;
+    if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
+    const ov = document.getElementById('cf-gmail-overlay');
+    if (ov) ov.remove();
+    cfGmailIdx++;
+    if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 400);
+}
+
+function cfAbrirModalGasto(datos) {
+    cfGmailDatosActual = datos;
+    const prev = document.getElementById('cf-gmail-overlay');
+    if (prev) prev.remove();
+    const esUSD = datos.moneda === 'USD';
+    const listaTarjetasActual = esUSD ? listaTarjetasUSD : listaTarjetas;
+    // Selección de lista de bancos/cuentas según moneda
+    const listaBancosActual = esUSD ? listaCuentasUSD : listaBancos;
+
+    let medioPagoId = '';
+    if (datos.tipo_tarjeta) {
+        const tipo = datos.tipo_tarjeta.toLowerCase();
+        const num  = datos.tarjeta || '';
+        if (tipo.includes('transferencia')) {
+            const cuentaMP = listaBancosActual.find(b => /mercado\s*pago/i.test(b.nombre));
+            if (cuentaMP) medioPagoId = cuentaMP.id;
+        } else {
+            let tarjeta = listaTarjetasActual.find(t => num && t.nombre && t.nombre.includes(num));
+            if (!tarjeta) {
+                if (tipo.includes('amex') || tipo.includes('american')) tarjeta = listaTarjetasActual.find(t => /amex|american/i.test(t.nombre));
+                else if (tipo.includes('visa')) tarjeta = listaTarjetasActual.find(t => /visa/i.test(t.nombre));
+            }
+            if (!tarjeta) tarjeta = listaTarjetasActual.find(t => /santander/i.test(t.nombre));
+            if (tarjeta) medioPagoId = tarjeta.id;
+        }
+    }
+    const opsBancosMedio = listaBancosActual.map(b => `<option value="${b.id}" ${b.id === medioPagoId ? 'selected' : ''}>🏦 ${b.nombre}</option>`).join('');
+    const opsTarjetas = listaTarjetasActual.map(t => `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`).join('');
+    const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
+    const opsRubros = listaRubrosActual.map(r => `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`).join('');
+    const fechaHoy = cfFechaLocal();
+    const overlay = document.createElement('div');
+    overlay.id = 'cf-gmail-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    overlay.innerHTML = `
+    <div style="background:#1e293b;border-radius:14px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;padding:20px 18px 24px;box-shadow:0 8px 40px rgba(0,0,0,0.6);color:#f1f5f9;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #334155;padding-bottom:12px;">
+            <span style="font-size:24px;">📧</span>
+            <h3 style="font-size:15px;font-weight:700;color:#f1f5f9;margin:0;flex:1;">Gasto detectado</h3>
+            <span style="font-size:10px;background:${datos.origen === 'Comprobante MP' ? '#009ee3' : '#ea4335'};color:white;padding:2px 7px;border-radius:20px;font-weight:600;">${datos.origen || 'Santander'}</span>
+        </div>
+        ${datos._attachmentDataUrl ? `
+        <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;margin-bottom:12px;">
+            ${datos._attachmentEsPdf
+                ? `<a href="${datos._attachmentDataUrl}" target="_blank" style="display:block;text-align:center;padding:16px;color:#a855f7;font-size:13px;font-weight:600;text-decoration:none;">📄 Ver comprobante PDF</a>`
+                : `<img src="${datos._attachmentDataUrl}" style="width:100%;border-radius:6px;display:block;">`}
+        </div>
+        <div style="font-size:11px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">✍️ Completá monto y rubro mirando el comprobante.</div>
+        ` : (!datos.monto || !datos.comercio) ? `<div style="font-size:12px;color:#fbbf24;background:#78350f;border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠️ Algunos datos no se detectaron. Revisá los campos.</div>` : ''}
+        <div style="display:flex;gap:8px;margin-bottom:11px;">
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Monto</label>
+            <input type="number" id="cf-gm-monto" step="0.01" value="${datos.monto ? datos.monto.toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Moneda</label>
+            <select id="cf-gm-moneda" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+                <option value="ARS" ${datos.moneda==='ARS'?'selected':''}>$ ARS</option>
+                <option value="USD" ${datos.moneda==='USD'?'selected':''}>U$S USD</option>
+            </select></div>
+        </div>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Comercio / Detalle</label>
+        <input type="text" id="cf-gm-detalle" value="${datos.comercio || ''}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">${datos.tarjeta ? `${datos.tipo_tarjeta} terminada en ${datos.tarjeta}` : datos.tipo_tarjeta}</div></div>
+        <div style="display:flex;gap:8px;margin-bottom:11px;">
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Fecha</label>
+            <input type="date" id="cf-gm-fecha" value="${datos.fecha || fechaHoy}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+            <div style="flex:1;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Cuotas</label>
+            <input type="number" id="cf-gm-cuotas" min="1" max="72" value="${datos.cuotas || 1}" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;"></div>
+        </div>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Rubro</label>
+        <select id="cf-gm-rubro" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            <option value="">— Seleccioná rubro —</option>${opsRubros}
+        </select></div>
+        <div style="margin-bottom:11px;"><label style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:4px;">Medio de pago</label>
+        <select id="cf-gm-medio" style="width:100%;padding:9px 11px;border:1.5px solid #334155;border-radius:8px;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box;">
+            <option value="">— Seleccioná medio de pago —</option>${opsBancosMedio}${opsTarjetas}
+        </select></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="cfCerrarModalGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:1.5px solid #334155;background:#0f172a;color:#f1f5f9;cursor:pointer;">✕ Cancelar</button>
+            <button onclick="cfConfirmarGasto()" style="flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;background:#4f46e5;color:white;cursor:pointer;">✓ Registrar gasto</button>
+        </div>
+        <button onclick="cfDescartarDefinitivo()" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;font-size:11.5px;font-weight:600;border:1px dashed #64748b;background:transparent;color:#94a3b8;cursor:pointer;">🚫 Descartar definitivamente (no volver a mostrar este mail)</button>
+    </div>`;
+    document.body.appendChild(overlay);
+}
+
 function cfConfirmarGasto() {
     const monto   = parseFloat(document.getElementById('cf-gm-monto').value);
     const moneda  = document.getElementById('cf-gm-moneda').value;
@@ -4534,36 +4933,32 @@ function cfConfirmarGasto() {
     const cuotas  = parseInt(document.getElementById('cf-gm-cuotas').value) || 1;
     const rubro   = document.getElementById('cf-gm-rubro').value;
     const medioId = document.getElementById('cf-gm-medio').value;
-
-    if (!detalle)           { alert('Ingresá el detalle del gasto.'); return; }
+    if (!detalle)               { alert('Ingresá el detalle del gasto.'); return; }
     if (isNaN(monto)||monto<=0) { alert('El monto no es válido.'); return; }
-    if (!rubro)             { alert('Seleccioná un rubro.'); return; }
-    if (!medioId)           { alert('Seleccioná el medio de pago.'); return; }
-
+    if (!rubro)                 { alert('Seleccioná un rubro.'); return; }
+    if (!medioId)               { alert('Seleccioná el medio de pago.'); return; }
     const detalleF = moneda === 'USD' ? `[USD ${monto.toFixed(2)}] ${detalle}` : detalle;
     const notasCuota = cuotas > 1 ? ` (${cuotas} cuotas)` : '';
-
     if (moneda === 'USD') {
-        listaCorrientesUSD.push({
-            id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
-            monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
-        });
+        listaCorrientesUSD.push({ id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota, monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M' });
+        const cuentaUSD = listaCuentasUSD.find(c => c.id === medioId);
+        if (cuentaUSD) cuentaUSD.saldo -= monto;
     } else {
-        listaCorrientes.push({
-            id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota,
-            monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M'
-        });
+        listaCorrientes.push({ id: 'c_' + Date.now(), rubro, detalle: detalleF + notasCuota, monto, fechaPago: fecha, medioPagoId: medioId, esIngreso: false, clase: 'M' });
+        // El gasto ya nace "pagado" (fechaPago seteada), así que no dispara el toggle
+        // prev/next que descuenta saldo en la tabla — lo hacemos acá directo.
+        if (esCuentaLiq(medioId)) {
+            const bk = listaBancos.find(b => b.id === medioId);
+            if (bk) bk.saldo -= monto;
+        }
     }
-
     guardar();
     if (moneda === 'USD') { if (typeof renderDolares === 'function') renderDolares(); }
     else { render(); }
-
-    const datos = cfGmailQueue[cfGmailIdx];
+    const datos = cfGmailDatosActual;
     if (datos && datos._gmailId) cfGmailMarkProcessed(datos._gmailId);
     const ov = document.getElementById('cf-gmail-overlay');
     if (ov) ov.remove();
-
     cfGmailIdx++;
     if (cfGmailIdx < cfGmailQueue.length) setTimeout(cfGmailMostrarSiguiente, 600);
 }
