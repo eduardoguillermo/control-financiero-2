@@ -800,7 +800,7 @@ function buildMesActual() {
         <div>
           <div class="panel panel-bancos no-print">
             <h3 class="panel-title" style="display:flex;align-items:center;">🏦 Cuentas Bancarias / Efectivo ${btnAyuda('bancos')}</h3>
-            <button type="button" onclick="abrirModalIngreso()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#0284c7;border:none;color:#fff;border-radius:6px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:12px;">💰 Ingresar fondos</button>
+            <button type="button" onclick="abrirModalIngreso()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#0d9488;border:none;color:#fff;border-radius:6px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:12px;">💰 Ingresar fondos</button>
             <div class="form-block">
               <form id="form-banco">
                 <div class="form-group"><label>Nombre</label><input type="text" id="banco-nombre" required placeholder="Ej. Galicia, MercadoPago"></div>
@@ -828,6 +828,19 @@ function buildMesActual() {
               <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button onclick="cerrarModalIngreso()" style="padding:8px 16px;border:1px solid #cbd5e1;border-radius:6px;background:white;cursor:pointer;font-size:14px;">Cancelar</button>
                 <button onclick="confirmarIngreso()" style="padding:8px 20px;border:none;border-radius:6px;background:#0284c7;color:white;cursor:pointer;font-size:14px;font-weight:bold;">✓ Confirmar</button>
+              </div>
+            </div>
+          </div>
+          <!-- Modal Editar Saldo -->
+          <div id="modal-editar-saldo" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
+            <div style="background:white;border-radius:12px;padding:24px;width:340px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+              <h3 style="margin:0 0 16px;color:#0f172a;font-size:16px;">✏️ Editar saldo</h3>
+              <div style="margin-bottom:4px;font-size:13px;color:#64748b;">Cuenta</div>
+              <div id="eds-nombre" style="margin-bottom:12px;font-weight:bold;font-size:14px;"></div>
+              <div style="margin-bottom:20px;"><label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Nuevo saldo ($)</label><input type="number" id="eds-saldo" step="1" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box;"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button onclick="cerrarModalEditarSaldo()" style="padding:8px 16px;border:1px solid #cbd5e1;border-radius:6px;background:white;cursor:pointer;font-size:14px;">Cancelar</button>
+                <button onclick="confirmarEditarSaldo()" style="padding:8px 20px;border:none;border-radius:6px;background:#0d9488;color:white;cursor:pointer;font-size:14px;font-weight:bold;">✓ Guardar</button>
               </div>
             </div>
           </div>
@@ -992,9 +1005,7 @@ function render() {
         tog.style.cssText='width:16px;height:16px;cursor:pointer;accent-color:#4f46e5;';
         tog.onchange=e=>{ b.autoDescontar=e.target.checked; guardar(); };
         tdT.appendChild(tog);
-        const inpB = inpNum(b.saldo, v=>{ b.saldo=v; guardar(); calcDash(); });
-        inpB.id = 'saldo-b-'+b.id;
-        const tdSB = el('td','tr'); tdSB.appendChild(inpB);
+        const tdSB = el('td','tr'); tdSB.innerHTML = `<span style="font-weight:bold;">${fmt(b.saldo)}</span> <button type="button" onclick="abrirModalEditarSaldo('${b.id}')" title="Editar saldo" style="border:none;background:none;cursor:pointer;color:#64748b;font-size:13px;vertical-align:-1px;">✏️</button>`;
         tB.appendChild(fila([tdHTML(`<b>${b.nombre}</b>`), tdSB, tdT, tdBtn('✕',()=>elimBanco(b.id))]));
     });
     if(!listaBancos.length) tB.innerHTML='<tr><td colspan="4" class="tc" style="color:#94a3b8;padding:12px;">Sin cuentas.</td></tr>';
@@ -1370,6 +1381,31 @@ function elimIngreso(id) {
     if(banco) banco.saldo -= ing.monto;
     listaIngresos = listaIngresos.filter(i=>i.id!==id);
     guardar();
+    render();
+}
+
+let edsBancoId = null;
+function abrirModalEditarSaldo(bancoId) {
+    const banco = listaBancos.find(b=>b.id===bancoId);
+    if(!banco) return;
+    edsBancoId = bancoId;
+    document.getElementById('eds-nombre').innerText = banco.nombre;
+    document.getElementById('eds-saldo').value = banco.saldo;
+    document.getElementById('modal-editar-saldo').style.display = 'flex';
+}
+function cerrarModalEditarSaldo() {
+    document.getElementById('modal-editar-saldo').style.display = 'none';
+    edsBancoId = null;
+}
+function confirmarEditarSaldo() {
+    const banco = listaBancos.find(b=>b.id===edsBancoId);
+    if(!banco){ alert('Cuenta no encontrada.'); return; }
+    const nuevo = parseFloat(document.getElementById('eds-saldo').value);
+    if(isNaN(nuevo)){ alert('Ingresá un saldo válido.'); return; }
+    banco.saldo = Math.round(nuevo);
+    guardar();
+    cerrarModalEditarSaldo();
+    calcDash();
     render();
 }
 
@@ -3187,7 +3223,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.81-dev1';
+const APP_VERSION = 'v3.7.82-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
