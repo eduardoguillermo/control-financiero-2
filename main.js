@@ -594,6 +594,7 @@ function renderTabs() {
     mkTab('<span>📈 Reportes</span>',    tabActivo==='reportes',    ()=>{ if(tabActivo!=='reportes') reportesMesId=null; tabActivo='reportes';    renderTabs(); renderContenido(); }, 'background:#f0fdf4;color:#166534;border-color:#86efac;');
     mkTab('<span>📊 Inversiones</span>', tabActivo==='inversiones', ()=>{ tabActivo='inversiones'; renderTabs(); renderContenido(); }, 'background:#fef9c3;color:#854d0e;border-color:#fde047;');
     mkTab('<span>📅 Anual</span>',      tabActivo==='anual',       ()=>{ tabActivo='anual';       renderTabs(); renderContenido(); }, 'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;');
+    mkTab('<span>🔥 Inflación</span>',  tabActivo==='inflacion',   ()=>{ tabActivo='inflacion';   renderTabs(); renderContenido(); }, 'background:#fef2f2;color:#dc2626;border-color:#fca5a5;');
     // Badge sync + botón Salir — siempre visible en la tab bar
     const spacer = document.createElement('div'); spacer.style.cssText='flex:1;';
     bar.appendChild(spacer);
@@ -641,6 +642,7 @@ function renderContenido() {
     else if (tabActivo==='reportes')    { app.appendChild(buildReportes()); }
     else if (tabActivo==='inversiones') { app.appendChild(buildInversiones()); bindInversiones(); actualizarInversiones(); iniciarTimerYPF(); }
     else if (tabActivo==='anual')       { app.appendChild(buildAnual()); }
+    else if (tabActivo==='inflacion')   { app.appendChild(buildInflacion()); }
     else {
         const mes = historicoMeses.find(m=>m.id===tabActivo);
         if (mes) app.appendChild(buildHistorico(mes));
@@ -3187,7 +3189,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.78-dev1';
+const APP_VERSION = 'v3.7.79-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -4099,6 +4101,122 @@ function buildAnual() {
 
         wrap.insertAdjacentHTML('beforeend', svgChart);
     }
+
+    return wrap;
+}
+
+// ═══════════════════════════════════════════
+//  INFLACIÓN — AJUSTE DE GASTOS POR RUBRO
+// ═══════════════════════════════════════════
+function cfSetInflacion(mesId, valor) {
+    const m = historicoMeses.find(x => x.id === mesId);
+    if (!m) return;
+    const v = valor.trim().replace(',', '.');
+    if (v === '') {
+        delete m.inflacion;
+    } else {
+        const num = parseFloat(v);
+        if (isNaN(num)) { alert('Ingresá un número válido (ej. 3,7).'); renderContenido(); return; }
+        m.inflacion = num;
+    }
+    guardar();
+    renderContenido();
+}
+
+function buildInflacion() {
+    const wrap = el('div', 'container'); wrap.style.paddingTop = '20px';
+
+    const hdr = el('div');
+    hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:12px;border-bottom:3px solid #dc2626;';
+    hdr.innerHTML = `<div><h2 style="margin:0;font-size:22px;color:#1e293b;">🔥 Inflación</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">Ajuste de gastos por rubro según inflación mensual — solo meses cerrados</p></div>`;
+    wrap.appendChild(hdr);
+
+    const cerrados = [...historicoMeses].slice(-12);
+    if (!cerrados.length) {
+        wrap.insertAdjacentHTML('beforeend', '<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;padding:32px;text-align:center;color:#94a3b8;">Todavía no hay períodos cerrados para ajustar por inflación. Cerrá el primer mes para empezar a cargarla.</div>');
+        return wrap;
+    }
+
+    // ── TABLA 1: CARGA DE INFLACIÓN POR MES (retroactiva) ──
+    wrap.insertAdjacentHTML('beforeend', '<h3 style="margin:0 0 14px;font-size:14px;font-weight:bold;color:#dc2626;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Inflación mensual por período cerrado</h3>');
+    let t1 = `<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #dc2626;padding:16px;margin-bottom:20px;">
+<table style="width:100%;border-collapse:collapse;font-size:11px;">
+<thead><tr style="background:#1e293b;">
+<th style="padding:6px 8px;text-align:left;color:white;">Mes cerrado</th>
+<th style="padding:6px 8px;text-align:right;color:white;">Inflación mensual</th>
+<th style="padding:6px 8px;text-align:right;color:white;">Estado</th>
+</tr></thead><tbody>`;
+    cerrados.forEach((m, i) => {
+        const tieneVal = (m.inflacion !== undefined && m.inflacion !== null);
+        const val = tieneVal ? String(m.inflacion).replace('.', ',') : '';
+        const estado = tieneVal ? '<span style="color:#10b981;">✔ cargado</span>' : '<span style="color:#f59e0b;">⚠ falta cargar</span>';
+        t1 += `<tr style="background:${i % 2 === 0 ? 'white' : '#f8fafc'};">
+<td style="padding:6px 8px;color:#334155;">${m.nombre}</td>
+<td style="padding:6px 8px;text-align:right;"><input type="text" value="${val}" placeholder="0,0" onchange="cfSetInflacion('${m.id}', this.value)" style="width:60px;font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid #cbd5e1;text-align:right;"><span style="font-size:10px;color:#64748b;margin-left:4px;">%</span></td>
+<td style="padding:6px 8px;text-align:right;">${estado}</td>
+</tr>`;
+    });
+    t1 += `</tbody></table></div>`;
+    wrap.insertAdjacentHTML('beforeend', t1);
+
+    // ── TABLA 2: RUBROS AJUSTADOS ──
+    const todosRubs = new Set();
+    cerrados.forEach(m => {
+        (m.datos.listaCorrientes || []).filter(c => c.fechaPago && !(c.rubro && c.rubro.toLowerCase().includes('tarjeta')) && !c.esIngreso).forEach(c => todosRubs.add(c.rubro || 'Sin rubro'));
+        (m.datos.listaServicios || []).filter(s => s.rubro).forEach(s => todosRubs.add(s.rubro));
+    });
+    const rubArr = [...todosRubs].sort();
+
+    function gastoRubroMes(m, rub) {
+        const sc = (m.datos.listaCorrientes || []).filter(c => c.fechaPago && c.rubro === rub && !c.esIngreso && !(c.rubro && c.rubro.toLowerCase().includes('tarjeta'))).reduce((a, c) => a + c.monto, 0);
+        const sfPres = (m.datos.listaServicios || []).filter(sv => sv.rubro === rub).reduce((a, sv) => a + sv.presupuesto, 0);
+        return sc + sfPres;
+    }
+
+    // Factor de ajuste: encadena la inflación de cada mes siguiente hasta el más reciente cerrado
+    const n = cerrados.length;
+    const factores = new Array(n).fill(1);
+    for (let i = n - 2; i >= 0; i--) {
+        const inflSiguiente = cerrados[i + 1].inflacion;
+        const f = (inflSiguiente !== undefined && inflSiguiente !== null) ? (1 + inflSiguiente / 100) : 1;
+        factores[i] = factores[i + 1] * f;
+    }
+    const faltanDatos = cerrados.slice(1).some(m => m.inflacion === undefined || m.inflacion === null);
+
+    wrap.insertAdjacentHTML('beforeend', '<h3 style="margin:20px 0 14px;font-size:14px;font-weight:bold;color:#1d4ed8;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Gastos por Rubro Ajustados por Inflación</h3>');
+    if (faltanDatos) {
+        wrap.insertAdjacentHTML('beforeend', '<div style="background:#fef3c7;border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#854d0e;">⚠️ Faltan cargar meses de inflación — los montos de esos tramos se muestran sin ajustar (0%) hasta que los completes.</div>');
+    }
+
+    let t2 = `<div style="background:white;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #1d4ed8;padding:16px;overflow-x:auto;">
+<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px;">
+<thead><tr style="background:#1e293b;">
+<th style="padding:8px;text-align:left;color:white;">Rubro</th>`;
+    cerrados.forEach((m, i) => { t2 += `<th style="padding:8px;text-align:right;color:${i === n - 1 ? '#fbbf24' : '#94a3b8'};white-space:nowrap;">${m.nombre.replace(' de ', ' ')}${i === n - 1 ? ' (base)' : ''}</th>`; });
+    t2 += `<th style="padding:8px;text-align:right;color:#f59e0b;">Var. real</th></tr></thead><tbody>`;
+
+    if (!rubArr.length) {
+        t2 += `<tr><td colspan="${n + 2}" style="padding:16px;text-align:center;color:#94a3b8;">Sin gastos por rubro registrados en estos meses.</td></tr>`;
+    } else {
+        rubArr.forEach((rub, ri) => {
+            const valoresAjustados = cerrados.map((m, i) => gastoRubroMes(m, rub) * factores[i]);
+            t2 += `<tr style="background:${ri % 2 === 0 ? 'white' : '#f8fafc'};">
+<td style="padding:6px 8px;font-weight:bold;color:#334155;">${rub}</td>`;
+            valoresAjustados.forEach((v, i) => {
+                t2 += `<td style="padding:6px 8px;text-align:right;color:${v > 0 ? '#334155' : '#94a3b8'};font-weight:${i === n - 1 ? 'bold' : 'normal'};">${v > 0 ? fmt(v) : '—'}</td>`;
+            });
+            const primero = valoresAjustados[0], ultimo = valoresAjustados[n - 1];
+            let varTxt = '—', varColor = '#94a3b8';
+            if (primero > 0) {
+                const varPct = ((ultimo - primero) / primero) * 100;
+                varTxt = (varPct >= 0 ? '+' : '') + varPct.toFixed(1).replace('.', ',') + '%';
+                varColor = varPct > 5 ? '#ef4444' : varPct < -5 ? '#10b981' : '#94a3b8';
+            }
+            t2 += `<td style="padding:6px 8px;text-align:right;font-weight:bold;color:${varColor};">${varTxt}</td></tr>`;
+        });
+    }
+    t2 += `</tbody></table></div>`;
+    wrap.insertAdjacentHTML('beforeend', t2);
 
     return wrap;
 }
