@@ -3189,7 +3189,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.79-dev1';
+const APP_VERSION = 'v3.7.80-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -4199,11 +4199,19 @@ function buildInflacion() {
         t2 += `<tr><td colspan="${n + 2}" style="padding:16px;text-align:center;color:#94a3b8;">Sin gastos por rubro registrados en estos meses.</td></tr>`;
     } else {
         rubArr.forEach((rub, ri) => {
-            const valoresAjustados = cerrados.map((m, i) => gastoRubroMes(m, rub) * factores[i]);
+            const valoresNominales = cerrados.map(m => gastoRubroMes(m, rub));
+            const valoresAjustados = valoresNominales.map((v, i) => v * factores[i]);
             t2 += `<tr style="background:${ri % 2 === 0 ? 'white' : '#f8fafc'};">
 <td style="padding:6px 8px;font-weight:bold;color:#334155;">${rub}</td>`;
             valoresAjustados.forEach((v, i) => {
-                t2 += `<td style="padding:6px 8px;text-align:right;color:${v > 0 ? '#334155' : '#94a3b8'};font-weight:${i === n - 1 ? 'bold' : 'normal'};">${v > 0 ? fmt(v) : '—'}</td>`;
+                const nom = valoresNominales[i];
+                const esBase = i === n - 1;
+                if (v > 0) {
+                    const nomLinea = (!esBase && Math.round(nom) !== Math.round(v)) ? `<div style="color:#94a3b8;font-size:9.5px;">${fmt(nom)} nom.</div>` : '';
+                    t2 += `<td style="padding:6px 8px;text-align:right;">${nomLinea}<div style="color:#334155;font-weight:${esBase ? 'bold' : 'normal'};">${fmt(v)}</div></td>`;
+                } else {
+                    t2 += `<td style="padding:6px 8px;text-align:right;color:#94a3b8;">—</td>`;
+                }
             });
             const primero = valoresAjustados[0], ultimo = valoresAjustados[n - 1];
             let varTxt = '—', varColor = '#94a3b8';
