@@ -800,6 +800,7 @@ function buildMesActual() {
         <div>
           <div class="panel panel-bancos no-print">
             <h3 class="panel-title" style="display:flex;align-items:center;">🏦 Cuentas Bancarias / Efectivo ${btnAyuda('bancos')}</h3>
+            <button type="button" onclick="abrirModalIngreso()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#0284c7;border:none;color:#fff;border-radius:6px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:12px;">💰 Ingresar fondos</button>
             <div class="form-block">
               <form id="form-banco">
                 <div class="form-group"><label>Nombre</label><input type="text" id="banco-nombre" required placeholder="Ej. Galicia, MercadoPago"></div>
@@ -808,9 +809,6 @@ function buildMesActual() {
               </form>
             </div>
             <table><thead><tr><th style="width:40%">Cuenta</th><th style="width:30%" class="tr">Saldo ($)</th><th style="width:20%" class="tc">Auto⬇</th><th style="width:10%" class="no-print"></th></tr></thead><tbody id="t-bancos"></tbody></table>
-            <div style="margin-top:8px;text-align:right;">
-              <button type="button" onclick="abrirModalIngreso()" style="background:none;border:1px solid #0284c7;color:#0284c7;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;line-height:1.6;">💰 Ingresar fondos</button>
-            </div>
             <div id="panel-historial-ingresos" style="margin-top:16px;display:none;">
               <h4 style="margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">📋 Historial de Ingresos</h4>
               <table style="font-size:12px;width:100%;border-collapse:collapse;">
@@ -3189,7 +3187,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.7.80-dev1';
+const APP_VERSION = 'v3.7.81-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
