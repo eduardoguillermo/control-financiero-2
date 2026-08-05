@@ -479,19 +479,26 @@
         <div class="section-subtitle">Control de deuda en tarjetas en pesos</div>
       </div>
     </div>
-    <p>Panel para registrar el saldo adeudado en cada tarjeta de crédito en pesos. El saldo representa la deuda acumulada de consumos del período.</p>
+    <p>Panel para registrar el saldo adeudado en cada tarjeta de crédito en pesos. El saldo total representa la deuda acumulada de consumos del período, incluyendo cargos que todavía no vencieron.</p>
 
     <h2>Cómo agregar una tarjeta</h2>
     <div class="steps">
       <div class="step"><div class="step-num">1</div><div class="step-body">Ingresar el nombre de la tarjeta (ej. "Visa Santander", "American Santander").</div></div>
-      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresar el saldo actual adeudado.</div></div>
-      <div class="step"><div class="step-num">3</div><div class="step-body">Hacer clic en "+ Agregar".</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresar el saldo total adeudado.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Ingresar el vencimiento actual (el importe del próximo resumen, si ya lo sabés).</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Hacer clic en "+ Agregar".</div></div>
     </div>
 
     <div class="tip">💡 El nombre de la tarjeta es importante para el módulo Gmail. El sistema auto-detecta la tarjeta del mail de Santander buscando "Visa" o "Amex" en el nombre de la tarjeta.</div>
 
-    <h2>Actualizar saldo</h2>
-    <p>Igual que en Bancos: hacer clic en el valor para editarlo inline.</p>
+    <h2>Saldo total vs. Vencimiento</h2>
+    <p>Como el cierre de la tarjeta opera antes de fin de mes, el <b>Saldo total</b> incluye consumos que todavía no entraron al resumen actual. El campo <b>Vencimiento</b> es el importe puntual que hay que pagar ahora (el del resumen), y se actualiza a mano cada vez que llega un resumen nuevo.</p>
+
+    <h2>Actualizar saldo o vencimiento</h2>
+    <p>Igual que en Bancos: hacer clic en el valor para editarlo inline, tanto en la columna Saldo total como en Vencimiento.</p>
+
+    <h2>Pagar la tarjeta</h2>
+    <p>El botón "💳 Pagar" precarga el modal con el monto del <b>Vencimiento</b> (no el saldo total), ya que normalmente eso es lo que se paga. Al confirmar, se descuenta del banco de origen y del saldo total de la tarjeta, y el Vencimiento baja en la misma proporción (nunca queda negativo).</p>
   </section>
 
   <!-- SERVICIOS FIJOS -->
@@ -1159,3 +1166,4 @@ sections.forEach(s => observer.observe(s));
 </script>
 </body>
 </html>
+
