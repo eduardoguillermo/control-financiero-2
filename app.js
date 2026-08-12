@@ -1800,6 +1800,7 @@ function renderMovimientosDetalle() {
         let filas = '';
         let running = saldoInicio;
         let fechaAnterior = null;
+        let filaIdx = 0;
         filas += '<tr style="background:#f8fafc;"><td colspan="2" style="padding:6px 10px;font-size:11px;font-weight:bold;color:#64748b;">Saldo al inicio del mes</td><td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:bold;color:#1e293b;">' + fmt(saldoInicio) + '</td></tr>';
         mov.forEach(m => {
             running += m.monto;
@@ -1810,7 +1811,9 @@ function renderMovimientosDetalle() {
             }
             const colorMonto = m.monto >= 0 ? '#16a34a' : '#dc2626';
             const signo = m.monto >= 0 ? '+' : '';
-            filas += '<tr><td style="padding:5px 10px 5px 20px;font-size:12px;color:#1e293b;">' + m.detalle + '</td>' +
+            const bgFila = (filaIdx % 2 === 0) ? '#ffffff' : '#eef2f6';
+            filaIdx++;
+            filas += '<tr style="background:' + bgFila + ';"><td style="padding:5px 10px 5px 20px;font-size:12px;color:#1e293b;">' + m.detalle + '</td>' +
                 '<td style="padding:5px 10px;text-align:right;font-size:12px;font-weight:bold;color:' + colorMonto + ';">' + signo + fmt(m.monto) + '</td>' +
                 '<td style="padding:5px 10px;text-align:right;font-size:12px;color:#64748b;">' + fmt(running) + '</td></tr>';
         });
