@@ -690,12 +690,26 @@
       <tr><th>Panel</th><th>Descripción</th></tr>
       <tr><td>🏦 Cuentas en USD</td><td>Cuentas bancarias y efectivo en dólares</td></tr>
       <tr><td>💳 Tarjetas en USD</td><td>Tarjetas de crédito con saldo en USD (ej. Visa Internacional)</td></tr>
+      <tr><td>↔️ Transferencias USD</td><td>Mueve saldo entre cuentas/tarjetas en USD, sin tocar pesos</td></tr>
+      <tr><td>💱 Comprar Dólares</td><td>Compra USD debitando una cuenta en pesos, con tipo de cambio manual</td></tr>
       <tr><td>📋 Servicios Fijos en USD</td><td>Suscripciones y servicios que se cobran en dólares (ej. Spotify, Netflix, Claude)</td></tr>
       <tr><td>🛍️ Gastos Corrientes en USD</td><td>Gastos variables en dólares</td></tr>
     </table>
 
     <h2>Tipo de cambio</h2>
     <p>La app obtiene automáticamente el tipo de cambio oficial (dólar venta) al abrir la pestaña Dólares. También se puede ingresar manualmente. El tipo de cambio se usa para mostrar los totales en pesos equivalentes.</p>
+
+    <h2>💱 Comprar Dólares <span class="badge badge-purple">Nuevo</span></h2>
+    <p>Este panel registra la compra de dólares con pesos: debita el monto elegido de una <b>cuenta en pesos</b> (Bancos) y acredita el equivalente en USD calculado en una <b>cuenta en dólares</b> (Cuentas en USD).</p>
+    <ul>
+      <li><b>Cuenta origen (pesos)</b>: banco del que se descuenta el monto en $.</li>
+      <li><b>Cuenta destino (USD)</b>: cuenta USD que recibe los dólares comprados.</li>
+      <li><b>Monto a debitar ($)</b>: importe en pesos que se resta de la cuenta origen.</li>
+      <li><b>Tipo de cambio</b>: se ingresa <b>manualmente</b> (viene precargado con el TC oficial del momento, pero se puede editar libremente antes de confirmar). No usa ningún TC automático al guardar.</li>
+      <li>La app muestra una <b>vista previa en vivo</b> del monto en USD resultante (monto ÷ TC) mientras se completa el formulario.</li>
+    </ul>
+    <p>Cada compra queda en una tabla con fecha, cuenta origen, cuenta destino, monto en $, TC utilizado y monto en USD acreditado. El botón ✕ revierte la operación: repone el monto en pesos a la cuenta origen y descuenta los USD de la cuenta destino.</p>
+    <div class="tip">💡 Es distinto de "Transferencias USD": esa mueve saldo entre dos cuentas que ya están en dólares, sin tocar pesos. "Comprar Dólares" es la operación de cambio: pesos → dólares.</div>
 
     <div class="tip">💡 Los servicios en USD también se integran con el módulo Gmail: cuando llega un mail de Santander con un débito en U$S, la app intenta matchear con los servicios en USD antes de crear un gasto corriente.</div>
   </section>
