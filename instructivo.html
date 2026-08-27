@@ -265,7 +265,7 @@
 <nav class="sidebar">
   <div class="sidebar-logo">
     <h1>💰 Control Financiero</h1>
-    <p>Manual de usuario · v3.8.6-dev1</p>
+    <p>Manual de usuario · v3.8.7-dev1</p>
   </div>
 
   <div class="section-label">Introducción</div>
@@ -311,7 +311,7 @@
     <h1>💰 Control Financiero</h1>
     <p>Manual completo de usuario — Gestión financiera personal en pesos y dólares</p>
     <div class="hero-badges">
-      <span class="badge badge-green">✓ v3.8.6-dev1</span>
+      <span class="badge badge-green">✓ v3.8.7-dev1</span>
       <span class="badge badge-blue">✓ Sin servidor</span>
       <span class="badge badge-amber">✓ Datos locales</span>
       <span class="badge badge-purple">✓ Gmail integrado</span>
@@ -471,7 +471,7 @@
     </div>
 
     <h2>Actualizar un saldo</h2>
-    <p>Hacer clic en el valor del saldo en la tabla. Se convierte en un campo editable. Ingresar el nuevo valor y presionar Enter o hacer clic fuera.</p>
+    <p>Tocar el ✏️ al lado del saldo, en la tabla. Se abre un modal con el nombre de la cuenta y un campo "Nuevo saldo ($)" precargado con el valor actual — se edita ahí y se confirma con "✓ Guardar" (el saldo se redondea al peso).</p>
 
     <h2>Eliminar una cuenta</h2>
     <p>Hacer clic en el botón 🗑 de la fila correspondiente. La app pedirá confirmación.</p>
@@ -564,7 +564,7 @@
       <tr><td>Presupuesto</td><td>Monto estimado que se pagará este mes</td></tr>
       <tr><td>Vencimiento</td><td>Fecha límite de pago (se limpia al abrir nuevo mes)</td></tr>
       <tr><td>Medio de pago</td><td>Tarjeta o cuenta con la que se paga</td></tr>
-      <tr><td>Clase</td><td>M=Mendoza, O=Rosario, X=Otros (para filtrado)</td></tr>
+      <tr><td>Clase</td><td>M=Mío, O=Oma, X=Otros (para filtrado)</td></tr>
       <tr><td>Rubro</td><td>Categoría del gasto</td></tr>
     </table>
 
@@ -607,8 +607,8 @@
     <h2>Clasificación</h2>
     <p>Cada gasto se clasifica opcionalmente con una clase:</p>
     <ul>
-      <li><strong>M</strong> — Mendoza</li>
-      <li><strong>O</strong> — Rosario</li>
+      <li><strong>M</strong> — Mío</li>
+      <li><strong>O</strong> — Oma</li>
       <li><strong>X</strong> — Otros / Extraordinario</li>
     </ul>
 
@@ -629,12 +629,12 @@
     <h2>Cómo registrar una compra en cuotas</h2>
     <div class="steps">
       <div class="step"><div class="step-num">1</div><div class="step-body">Ingresar la <strong>descripción</strong> de la compra.</div></div>
-      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresar el <strong>monto por cuota</strong>.</div></div>
-      <div class="step"><div class="step-num">3</div><div class="step-body">Ingresar el <strong>total de cuotas</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresar el <strong>monto total</strong> de la compra (no el de cada cuota).</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Ingresar la <strong>cantidad de cuotas</strong> (mínimo 2).</div></div>
       <div class="step"><div class="step-num">4</div><div class="step-body">Seleccionar el <strong>medio de pago</strong>.</div></div>
       <div class="step"><div class="step-num">5</div><div class="step-body">Hacer clic en "+ Agregar cuota".</div></div>
     </div>
-    <p>La primera cuota aparece inmediatamente en el panel de Servicios Fijos. Al abrir cada nuevo mes, la siguiente cuota se genera automáticamente hasta completar el total.</p>
+    <p>El monto de cada cuota se calcula automáticamente (monto total ÷ cantidad de cuotas, redondeado hacia arriba) y se muestra como vista previa antes de confirmar. La primera cuota aparece inmediatamente en el panel de Servicios Fijos. Al abrir cada nuevo mes, la siguiente cuota se genera automáticamente hasta completar el total.</p>
     <div class="note">📌 Si quedan 1 o 2 cuotas pendientes, la app muestra una alerta visual en la sección de próximos vencimientos.</div>
   </section>
 
@@ -657,7 +657,7 @@
       <div class="step"><div class="step-num">4</div><div class="step-body">Ingresar la <strong>fecha</strong>.</div></div>
       <div class="step"><div class="step-num">5</div><div class="step-body">Hacer clic en "+ Registrar".</div></div>
     </div>
-    <div class="info">ℹ️ Las transferencias quedan registradas en el historial del período cerrado, pero no afectan directamente los saldos de bancos (los saldos se actualizan manualmente).</div>
+    <div class="info">ℹ️ Al confirmar, la app descuenta el monto de la cuenta Origen y lo suma a la cuenta Destino automáticamente — no hace falta ajustar los saldos a mano. La transferencia queda registrada en el historial hasta el próximo cierre de mes.</div>
   </section>
 
   <!-- RUBROS -->
@@ -675,7 +675,7 @@
     <p>Ingresar el nombre del rubro en el campo de texto y hacer clic en "+ Agregar".</p>
 
     <h2>Eliminar un rubro</h2>
-    <p>Hacer clic en el botón 🗑 junto al rubro. Si hay gastos asociados a ese rubro, quedarán sin categoría.</p>
+    <p>Hacer clic en el botón 🗑 junto al rubro. Si el rubro está en uso por algún gasto corriente o servicio fijo, la app lo bloquea con el aviso "Rubro en uso" — hay que reasignar o eliminar esos gastos/servicios primero.</p>
 
     <div class="note">📌 Los rubros son independientes para pesos y dólares. Cada moneda tiene su propia lista de rubros.</div>
   </section>
@@ -826,7 +826,7 @@
         <div class="section-subtitle">Historial de meses anteriores (solo lectura)</div>
       </div>
     </div>
-    <p>Cada vez que se abre un Nuevo Mes, el período actual se archiva y aparece como una tab adicional. Los períodos cerrados son de solo lectura y muestran el estado exacto al momento del cierre.</p>
+    <p>Cada vez que se abre un Nuevo Mes, el período actual se archiva y queda disponible desde el botón <strong>📅 Meses cerrados</strong> del header (muestra un contador con la cantidad de meses archivados). Al tocarlo se despliega la lista, del más reciente al más viejo; tocar un mes lo abre en modo solo lectura, mostrando el estado exacto al momento del cierre.</p>
 
     <h2>Contenido de un período cerrado</h2>
     <ul>
@@ -838,7 +838,9 @@
     </ul>
 
     <h2>Eliminar un período</h2>
-    <p>Hacer clic en el ✕ de la tab del período. Esta acción es irreversible.</p>
+    <p>Dentro del desplegable "📅 Meses cerrados", tocar la ✕ junto al mes. Pide confirmación. Esta acción es irreversible.</p>
+
+    <div class="note">📌 Mientras un período cerrado está abierto, aparece un indicador junto al botón "📅 Meses cerrados" con el nombre del mes; tocarlo vuelve a abrir el desplegable, y su ✕ vuelve a Mes Actual.</div>
 
     <div class="note">📌 Los períodos cerrados se incluyen en el backup a Drive y en el export JSON.</div>
   </section>
@@ -1134,6 +1136,13 @@ console.log(gToken ? 'Token activo' : 'Sin token')</pre>
 
     <details class="changelog-details">
       <summary class="changelog-summary">Ver historial de versiones</summary>
+
+<div class="changelog-entry">
+      <div class="changelog-version"><span class="v-num">v3.8.7-dev1</span><span class="changelog-tag tag-fix">fix</span></div>
+      <ul class="changelog-list">
+        <li>Al eliminar un rubro, ahora también se chequea si está en uso por un Servicio Fijo (antes solo chequeaba Gastos Corrientes, podía dejar servicios con un rubro huérfano)</li>
+      </ul>
+    </div>
 
 <div class="changelog-entry">
       <div class="changelog-version"><span class="v-num">v3.8.6-dev1</span><span class="changelog-tag tag-feature">feature</span></div>
