@@ -3528,14 +3528,15 @@ function calcDashInv() {
     setTxt('inv-total-acciones',fmt(totalAcc));
 }
 
-// Cadena de proxies CORS con fallback: si uno falla (403/429/503/caído), prueba el siguiente.
-// Los proxies gratuitos son inestables por naturaleza (rate limits, caídas temporales),
-// así que en vez de depender de uno solo, probamos varios en orden.
-// Cada intento tiene timeout propio para no colgarse esperando un proxy caído.
+// Proxies CORS que se prueban en simultáneo (Promise.any, ver fetchViaProxyJSON) — nos quedamos
+// con el primero que responda bien. Son servicios gratuitos de terceros, así que van cambiando:
+// corsproxy.io dejó de funcionar sin API key propia (ahora devuelve 401) y se sacó de la lista.
+// corsfix y thingproxy no requieren registro para este uso.
 const CORS_PROXIES = [
     function(url){ return 'https://api.allorigins.win/raw?url='+encodeURIComponent(url); },
     function(url){ return 'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url); },
-    function(url){ return 'https://corsproxy.io/?url='+encodeURIComponent(url); }
+    function(url){ return 'https://proxy.corsfix.com/?'+url; },
+    function(url){ return 'https://thingproxy.freeboard.io/fetch/'+url; }
 ];
 const CORS_PROXY_TIMEOUT_MS = 8000;
 
@@ -5496,7 +5497,7 @@ function cfAbrirModalGasto(datos) {
     const opsBancosMedio = listaBancosActual.map(b => `<option value="${b.id}" ${b.id === medioPagoId ? 'selected' : ''}>🏦 ${b.nombre}</option>`).join('');
     const opsTarjetas = listaTarjetasActual.map(t => `<option value="${t.id}" ${t.id === medioPagoId ? 'selected' : ''}>💳 ${t.nombre}</option>`).join('');
     const listaRubrosActual = esUSD ? listaRubrosUSD : listaRubros;
-    const opsRubros = [...listaRubrosActual].sort((a,b) => a.localeCompare(b,'es')).map(r => `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`).join('');
+    const opsRubros = listaRubrosActual.map(r => `<option value="${r}" ${r === datos.rubroSugerido ? 'selected' : ''}>${r}</option>`).join('');
     const fechaHoy = cfFechaLocal();
     const overlay = document.createElement('div');
     overlay.id = 'cf-gmail-overlay';
