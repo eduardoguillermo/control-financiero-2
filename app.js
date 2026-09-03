@@ -1896,21 +1896,19 @@ function modalPresupuestoLimite() {
     }).filter(x=>x.pres>0 && x.pct>=80).sort((a,b)=>b.pct-a.pct);
     if(!superados.length) return;
     const itemsHtml = superados.map(x=>{
-        const col = colorRubro(x.rubro);
         const critico = x.pct>=100;
-        const barColor = critico ? '#dc2626' : '#f59e0b';
+        const claseFila = critico ? 'critico' : 'alerta';
+        const barColor = critico ? '#ef4444' : '#f59e0b';
         const badgeTxt = critico ? 'SUPERADO' : x.pct+'%';
-        const bg = critico ? '#fef2f2' : '#fffbeb';
-        const border = critico ? '#fca5a5' : '#fde68a';
-        return '<div style="background:'+bg+';border:1px solid '+border+';border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
-            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-            + '<span style="font-size:13px;font-weight:bold;color:'+col+';">'+x.rubro+'</span>'
-            + '<span style="font-size:10px;font-weight:bold;padding:2px 8px;border-radius:999px;background:'+(critico?'#fee2e2':'#fef3c7')+';color:'+(critico?'#b91c1c':'#92400e')+';">'+badgeTxt+'</span>'
+        return '<div class="vto-item '+claseFila+'" style="display:block;">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+            + '<span class="vto-nombre">'+x.rubro+'</span>'
+            + '<span class="vto-dias">'+badgeTxt+'</span>'
             + '</div>'
-            + '<div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:6px;">'
+            + '<div style="height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-bottom:6px;">'
             + '<div style="height:100%;width:'+Math.min(100,x.pct)+'%;background:'+barColor+';"></div>'
             + '</div>'
-            + '<div style="font-size:11px;color:#64748b;">'+fmt(x.gast)+' de '+fmt(x.pres)+' ('+x.pct+'%)</div>'
+            + '<div class="vto-sub">'+fmt(x.gast)+' de '+fmt(x.pres)+' · '+x.pct+'%</div>'
             + '</div>';
     }).join('');
     const ov = el('div','modal-overlay no-print'); ov.id='modal-presup-alerta';
@@ -4050,7 +4048,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.14-dev1';
+const APP_VERSION = 'v3.8.15-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
