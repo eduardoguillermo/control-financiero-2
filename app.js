@@ -3150,6 +3150,7 @@ function buildReportes() {
         { id: 'rubros12',    label: '📊 Análisis por Rubro (12 meses)' },
         { id: 'claseO',      label: '🏷️ Detalle Clase O' },
         { id: 'presupuesto', label: '🎯 Cumplimiento de Presupuesto' },
+        { id: 'transacciones', label: '🧾 Detalle de Transacciones por Rubro' },
     ];
     const menu = el('div', 'no-print'); menu.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;';
     menuItems.forEach(mi => {
@@ -3456,6 +3457,11 @@ function buildReportes() {
     buildReporte4Presupuesto(wrap, liveCorrientes, liveRubros, liveServicios);
     } // fin reportesSubTab === 'presupuesto'
 
+    if (reportesSubTab === 'transacciones') {
+    // ── REPORTE 5: DETALLE DE TRANSACCIONES POR RUBRO (6 MESES) ─────────────────
+    buildReporte5Transacciones(wrap, liveCorrientes, liveRubros, liveServicios);
+    } // fin reportesSubTab === 'transacciones'
+
     } finally {
         // Restaurar siempre los valores en vivo, incluso si algo falló arriba
         listaBancos=liveBancos; listaTarjetas=liveTarjetas; listaServicios=liveServicios; listaCorrientes=liveCorrientes;
@@ -3466,6 +3472,7 @@ function buildReportes() {
     return wrap;
 }
 let r4RubrosSel = null; // null = todavía no inicializado (se arma la primera vez que se abre el reporte)
+let r5RubroSel = null;  // rubro elegido para el detalle de transacciones (Reporte 5)
 
 // ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO — ÚLTIMOS 6 MESES (5 anteriores + mes actual) ──
 // Compara, para cada rubro elegido, el gasto real ($) de los últimos 3 meses contra
@@ -3631,6 +3638,95 @@ function dibujarLineaRubroR4(canvasId, meses, valores, limite, color) {
     meses.forEach((m, i) => ctx.fillText(abrevMesR4(m), xPos(i), H - 6));
 }
 
+
+// ── REPORTE 5: DETALLE DE TRANSACCIONES POR RUBRO — mismos 6 meses que el Reporte 4 ──
+// Lista, transacción por transacción, qué compone el gasto de un rubro elegido, mes por mes.
+// Es el "drill-down" del Reporte 4: mismo criterio de datos (corrientes pagadas sin tarjeta + fijos pagados con rubro).
+function buildReporte5Transacciones(wrap, corrientesActual, rubrosActual, serviciosActual) {
+    const cerrados = [...historicoMeses].slice(-5);
+    const mesesData = cerrados.map(m => ({
+        nombre: m.nombre,
+        corrientes: (m.datos && m.datos.listaCorrientes) || [],
+        servicios: (m.datos && m.datos.listaServicios) || [],
+    }));
+    mesesData.push({ nombre: 'Mes Actual', corrientes: corrientesActual || [], servicios: serviciosActual || [] });
+
+    const esCorrienteValida = c => c.fechaPago && !c.esIngreso && !(c.rubro && c.rubro.toLowerCase().includes('tarjeta'));
+    const esServicioValido = s => s.rubro && s.pagado > 0;
+
+    const todosRubros = [...new Set([
+        ...rubrosActual,
+        ...mesesData.flatMap(m => [
+            ...m.corrientes.filter(esCorrienteValida).map(c => c.rubro),
+            ...m.servicios.filter(esServicioValido).map(s => s.rubro),
+        ]),
+    ])].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+    wrap.insertAdjacentHTML('beforeend', '<h3 style="margin:32px 0 16px;font-size:16px;font-weight:bold;color:#7c3aed;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 5 · Detalle de Transacciones por Rubro · ' + mesesData.map(m => m.nombre).join(' → ') + '</h3>');
+
+    if (!todosRubros.length) {
+        wrap.insertAdjacentHTML('beforeend', '<div style="background:white;border:1px solid #cbd5e1;border-radius:8px;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Todavía no hay rubros ni gastos cargados.</div>');
+        return;
+    }
+    if (r5RubroSel === null || !todosRubros.includes(r5RubroSel)) r5RubroSel = todosRubros[0];
+
+    const cont = el('div');
+    wrap.appendChild(cont);
+
+    const render5 = () => {
+        let html = '<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #7c3aed;padding:16px;margin-bottom:24px;">';
+
+        html += '<div style="margin-bottom:16px;"><label style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;display:block;margin-bottom:6px;">Rubro</label>';
+        html += '<select id="r5-rubro-sel" style="font-size:13px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;max-width:320px;">';
+        todosRubros.forEach(r => { html += `<option value="${escapeAttr(r)}" ${r === r5RubroSel ? 'selected' : ''}>${r}</option>`; });
+        html += '</select></div>';
+
+        let totalGeneral = 0;
+        const bloquesMes = mesesData.map(m => {
+            const items = [];
+            m.corrientes.filter(c => c.rubro === r5RubroSel && esCorrienteValida(c)).forEach(c => {
+                items.push({ fecha: c.fechaPago, detalle: c.detalle || c.rubro, monto: c.monto, tipo: 'corriente' });
+            });
+            m.servicios.filter(s => s.rubro === r5RubroSel && esServicioValido(s)).forEach(s => {
+                items.push({ fecha: s.fPago || '', detalle: s.nombre, monto: s.pagado, tipo: 'fijo' });
+            });
+            items.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+            const subtotal = items.reduce((a, it) => a + it.monto, 0);
+            totalGeneral += subtotal;
+            return { nombre: m.nombre, items, subtotal };
+        });
+
+        if (bloquesMes.every(b => !b.items.length)) {
+            html += '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Este rubro no tiene transacciones registradas en los últimos 6 meses.</div>';
+        } else {
+            bloquesMes.forEach(b => {
+                html += '<div style="margin-bottom:18px;">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;border-bottom:1px solid #e2e8f0;margin-bottom:6px;">'
+                    + '<span style="font-size:13px;font-weight:bold;color:#334155;">' + b.nombre + '</span>'
+                    + '<span style="font-size:12px;font-weight:bold;color:#7c3aed;">' + fmt(b.subtotal) + '</span></div>';
+                if (!b.items.length) {
+                    html += '<div style="font-size:12px;color:#94a3b8;padding:6px 0;">Sin movimientos este mes.</div>';
+                } else {
+                    b.items.forEach(it => {
+                        const fechaLbl = it.fecha ? it.fecha.split('-').reverse().join('/') : '—';
+                        const tag = it.tipo === 'fijo' ? '<span style="font-size:9px;font-weight:bold;padding:1px 6px;border-radius:999px;background:#fef3c7;color:#92400e;margin-left:6px;">FIJO</span>' : '';
+                        html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;">'
+                            + '<span style="color:#475569;">' + fechaLbl + ' — ' + escapeAttr(it.detalle) + tag + '</span>'
+                            + '<span style="color:#1e293b;font-weight:500;">' + fmt(it.monto) + '</span></div>';
+                    });
+                }
+                html += '</div>';
+            });
+            html += '<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:2px solid #7c3aed;font-size:13px;font-weight:bold;"><span>Total ' + r5RubroSel + ' (6 meses)</span><span style="color:#7c3aed;">' + fmt(totalGeneral) + '</span></div>';
+        }
+
+        html += '</div>';
+        cont.innerHTML = html;
+        document.getElementById('r5-rubro-sel').onchange = e => { r5RubroSel = e.target.value; render5(); };
+    };
+
+    render5();
+}
 
 function cambiarMesReportes(id) {
     reportesMesId = id || null;
@@ -4265,7 +4361,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.24-dev1';
+const APP_VERSION = 'v3.8.25-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
