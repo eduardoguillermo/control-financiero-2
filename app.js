@@ -3450,6 +3450,7 @@ function buildReportes() {
     return wrap;
 }
 let r4RubrosSel = null; // null = todavía no inicializado (se arma la primera vez que se abre el reporte)
+let r4Modo = 'grilla';  // 'grilla' | 'combinado'
 
 // ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO — ÚLTIMOS 6 MESES (5 anteriores + mes actual) ──
 // Compara, para cada rubro elegido, el gasto real ($) de los últimos 3 meses contra
@@ -3474,9 +3475,10 @@ function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
         return;
     }
 
-    // Selección inicial: ningún rubro tildado — el usuario elige cuáles ver.
+    // Selección inicial: rubros con límite cargado. El usuario puede tildar/destildar cualquiera.
     if (r4RubrosSel === null) {
-        r4RubrosSel = new Set();
+        r4RubrosSel = new Set(todosRubros.filter(r => listaPresupRubros[r] > 0));
+        if (!r4RubrosSel.size) r4RubrosSel = new Set(todosRubros); // fallback: si nadie tiene límite, mostrar todos
     }
 
     const contR4 = el('div');
@@ -3496,11 +3498,23 @@ function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
         });
         html += '</div></div>';
 
+        // Toggle de vista
+        html += '<div style="display:flex;gap:6px;margin-bottom:16px;">';
+        ['grilla','combinado'].forEach(m => {
+            const on = r4Modo === m;
+            html += `<button data-r4-modo="${m}" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid ${on?'#0284c7':'#cbd5e1'};background:${on?'#0284c7':'white'};color:${on?'white':'#334155'};cursor:pointer;">${m==='grilla'?'▦ Grilla (uno por rubro)':'📈 Combinado (todos juntos)'}</button>`;
+        });
+        html += '</div>';
+
         const seleccionados = todosRubros.filter(r => r4RubrosSel.has(r));
         if (!seleccionados.length) {
             html += '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Tildá al menos un rubro para ver el gráfico.</div>';
+        } else if (r4Modo === 'combinado') {
+            html += '<canvas id="r4-canvas-combinado" style="width:100%;height:260px;"></canvas>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">' + seleccionados.map(r => `<span style="font-size:11px;color:${colorRubro(r)};font-weight:bold;">● ${r}</span>`).join('') + '</div>';
+            html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">💡 En modo combinado no se muestran las líneas de límite individuales (quedaría ilegible con varios rubros distintos) — cambiá a Grilla para verlas.</div>';
         } else {
-            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;">';
             seleccionados.forEach((r, i) => {
                 const limite = listaPresupRubros[r] || 0;
                 html += `<div><div style="font-size:12px;font-weight:bold;color:${colorRubro(r)};margin-bottom:6px;">${r}${limite>0?' · límite '+fmt(limite):''}</div><canvas id="r4-canvas-${i}" style="width:100%;height:160px;"></canvas></div>`;
@@ -3518,13 +3532,20 @@ function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
                 renderR4();
             };
         });
+        contR4.querySelectorAll('[data-r4-modo]').forEach(btn => {
+            btn.onclick = () => { r4Modo = btn.getAttribute('data-r4-modo'); renderR4(); };
+        });
 
         // Dibujar gráficos
         setTimeout(() => {
-            seleccionados.forEach((r, i) => {
-                const valores = mesesData.map(m => m.gasto[r] || 0);
-                dibujarLineaRubroR4('r4-canvas-' + i, mesesData.map(m => m.nombre), valores, listaPresupRubros[r] || 0, colorRubro(r));
-            });
+            if (r4Modo === 'combinado') {
+                dibujarCombinadoR4('r4-canvas-combinado', mesesData, seleccionados);
+            } else {
+                seleccionados.forEach((r, i) => {
+                    const valores = mesesData.map(m => m.gasto[r] || 0);
+                    dibujarLineaRubroR4('r4-canvas-' + i, mesesData.map(m => m.nombre), valores, listaPresupRubros[r] || 0, colorRubro(r));
+                });
+            }
         }, 30);
     };
 
@@ -3601,6 +3622,43 @@ function dibujarLineaRubroR4(canvasId, meses, valores, limite, color) {
     meses.forEach((m, i) => ctx.fillText(abrevMesR4(m), xPos(i), H - 6));
 }
 
+// Modo combinado: todas las líneas de gasto juntas (sin límites individuales, quedarían ilegibles).
+function dibujarCombinadoR4(canvasId, mesesData, rubros) {
+    const cv = document.getElementById(canvasId); if (!cv) return;
+    const W = cv.offsetWidth || 600, H = 260;
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const series = rubros.map(r => mesesData.map(m => m.gasto[r] || 0));
+    const maxV = Math.max(...series.flat(), 1);
+    const pad = { t: 16, r: 16, b: 28, l: 70 };
+    const W2 = W - pad.l - pad.r, H2 = H - pad.t - pad.b;
+    const n = mesesData.length;
+    const xPos = i => pad.l + i * (W2 / (n - 1 || 1));
+    const yPos = v => pad.t + H2 - (v / maxV) * H2;
+
+    // Grilla Y (3 líneas)
+    [0, 0.5, 1].forEach(f => {
+        const y = pad.t + H2 - f * H2;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y);
+        ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.font = '10px Arial'; ctx.textAlign = 'right';
+        ctx.fillText(fmt(maxV * f), pad.l - 6, y + 3);
+    });
+
+    rubros.forEach((r, ri) => {
+        const valores = series[ri], col = colorRubro(r);
+        ctx.beginPath(); ctx.moveTo(xPos(0), yPos(valores[0]));
+        valores.forEach((v, i) => { if (i > 0) ctx.lineTo(xPos(i), yPos(v)); });
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+        valores.forEach((v, i) => { ctx.beginPath(); ctx.arc(xPos(i), yPos(v), 3.5, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); });
+    });
+
+    // Eje X
+    ctx.font = '10px Arial'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center';
+    mesesData.forEach((m, i) => ctx.fillText(abrevMesR4(m.nombre), xPos(i), H - 8));
+}
 
 function cambiarMesReportes(id) {
     reportesMesId = id || null;
@@ -4235,7 +4293,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.18-dev1';
+const APP_VERSION = 'v3.8.17-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
