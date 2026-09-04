@@ -3406,6 +3406,10 @@ function buildReportes() {
 
     wrap.insertAdjacentHTML('beforeend', rO);
 
+    // ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO (3 MESES) ─────────────────
+    // Siempre usa datos EN VIVO (mes actual real), igual que el Reporte 2 — el selector de "mes cerrado" no lo afecta.
+    buildReporte4Presupuesto(wrap, liveCorrientes, liveRubros);
+
     } finally {
         // Restaurar siempre los valores en vivo, incluso si algo falló arriba
         listaBancos=liveBancos; listaTarjetas=liveTarjetas; listaServicios=liveServicios; listaCorrientes=liveCorrientes;
@@ -3415,6 +3419,209 @@ function buildReportes() {
 
     return wrap;
 }
+let r4RubrosSel = null; // null = todavía no inicializado (se arma la primera vez que se abre el reporte)
+let r4Modo = 'grilla';  // 'grilla' | 'combinado'
+
+// ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO — MES ACTUAL + 2 ANTERIORES ──
+// Compara, para cada rubro elegido, el gasto real ($) de los últimos 3 meses contra
+// el límite/presupuesto ACTUAL de ese rubro (la app no guarda el límite histórico mes
+// a mes, así que se aplica el de hoy como referencia aproximada a los 3 meses).
+function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
+    // Hasta 2 meses cerrados más recientes (orden cronológico) + el mes actual en vivo al final.
+    const cerrados = [...historicoMeses].slice(-2);
+    const mesesData = cerrados.map(m => ({
+        nombre: m.nombre,
+        gasto: gastoPorRubroDeLista(m.datos && m.datos.listaCorrientes || [])
+    }));
+    mesesData.push({ nombre: 'Mes Actual', gasto: gastoPorRubroDeLista(corrientesActual) });
+
+    // Unión de rubros configurados + rubros con gasto real en alguno de los 3 meses.
+    const todosRubros = [...new Set([...rubrosActual, ...mesesData.flatMap(m => Object.keys(m.gasto))])].sort();
+
+    wrap.insertAdjacentHTML('beforeend', '<h3 style="margin:32px 0 16px;font-size:16px;font-weight:bold;color:#0284c7;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 4 · Cumplimiento de Presupuesto por Rubro · ' + mesesData.map(m=>m.nombre).join(' → ') + '</h3>');
+
+    if (!todosRubros.length) {
+        wrap.insertAdjacentHTML('beforeend', '<div style="background:white;border:1px solid #cbd5e1;border-radius:8px;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Todavía no hay rubros ni gastos cargados.</div>');
+        return;
+    }
+
+    // Selección inicial: rubros con límite cargado. El usuario puede tildar/destildar cualquiera.
+    if (r4RubrosSel === null) {
+        r4RubrosSel = new Set(todosRubros.filter(r => listaPresupRubros[r] > 0));
+        if (!r4RubrosSel.size) r4RubrosSel = new Set(todosRubros); // fallback: si nadie tiene límite, mostrar todos
+    }
+
+    const contR4 = el('div');
+    wrap.appendChild(contR4);
+
+    const renderR4 = () => {
+        let html = '<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;border-top:4px solid #0284c7;padding:16px;margin-bottom:24px;">';
+
+        // Selector de rubros (checklist)
+        html += '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Rubros a mostrar</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        todosRubros.forEach(r => {
+            const activo = r4RubrosSel.has(r);
+            const col = colorRubro(r);
+            html += `<label style="display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid ${activo?col:'#cbd5e1'};background:${activo?col+'15':'#f8fafc'};color:${activo?col:'#94a3b8'};cursor:pointer;user-select:none;">`
+                + `<input type="checkbox" data-r4-rubro="${escapeAttr(r)}" ${activo?'checked':''} style="accent-color:${col};margin:0;">`
+                + `${r}${listaPresupRubros[r]>0 ? '' : ' <span style="opacity:.6;">(sin límite)</span>'}</label>`;
+        });
+        html += '</div></div>';
+
+        // Toggle de vista
+        html += '<div style="display:flex;gap:6px;margin-bottom:16px;">';
+        ['grilla','combinado'].forEach(m => {
+            const on = r4Modo === m;
+            html += `<button data-r4-modo="${m}" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid ${on?'#0284c7':'#cbd5e1'};background:${on?'#0284c7':'white'};color:${on?'white':'#334155'};cursor:pointer;">${m==='grilla'?'▦ Grilla (uno por rubro)':'📈 Combinado (todos juntos)'}</button>`;
+        });
+        html += '</div>';
+
+        const seleccionados = todosRubros.filter(r => r4RubrosSel.has(r));
+        if (!seleccionados.length) {
+            html += '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Tildá al menos un rubro para ver el gráfico.</div>';
+        } else if (r4Modo === 'combinado') {
+            html += '<canvas id="r4-canvas-combinado" style="width:100%;height:260px;"></canvas>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">' + seleccionados.map(r => `<span style="font-size:11px;color:${colorRubro(r)};font-weight:bold;">● ${r}</span>`).join('') + '</div>';
+            html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">💡 En modo combinado no se muestran las líneas de límite individuales (quedaría ilegible con varios rubros distintos) — cambiá a Grilla para verlas.</div>';
+        } else {
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">';
+            seleccionados.forEach((r, i) => {
+                const limite = listaPresupRubros[r] || 0;
+                html += `<div><div style="font-size:12px;font-weight:bold;color:${colorRubro(r)};margin-bottom:6px;">${r}${limite>0?' · límite '+fmt(limite):''}</div><canvas id="r4-canvas-${i}" style="width:100%;height:160px;"></canvas></div>`;
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        contR4.innerHTML = html;
+
+        // Bind checkboxes
+        contR4.querySelectorAll('[data-r4-rubro]').forEach(cb => {
+            cb.onchange = e => {
+                const r = e.target.getAttribute('data-r4-rubro');
+                if (e.target.checked) r4RubrosSel.add(r); else r4RubrosSel.delete(r);
+                renderR4();
+            };
+        });
+        contR4.querySelectorAll('[data-r4-modo]').forEach(btn => {
+            btn.onclick = () => { r4Modo = btn.getAttribute('data-r4-modo'); renderR4(); };
+        });
+
+        // Dibujar gráficos
+        setTimeout(() => {
+            if (r4Modo === 'combinado') {
+                dibujarCombinadoR4('r4-canvas-combinado', mesesData, seleccionados);
+            } else {
+                seleccionados.forEach((r, i) => {
+                    const valores = mesesData.map(m => m.gasto[r] || 0);
+                    dibujarLineaRubroR4('r4-canvas-' + i, mesesData.map(m => m.nombre), valores, listaPresupRubros[r] || 0, colorRubro(r));
+                });
+            }
+        }, 30);
+    };
+
+    renderR4();
+}
+
+// Suma de gastos por rubro de una lista de corrientes — mismo criterio que Presupuesto y el modal de alerta:
+// solo egresos pagados, excluyendo rubros de tarjeta.
+function gastoPorRubroDeLista(lista) {
+    const g = {};
+    (lista || []).filter(c => c.fechaPago && !c.esIngreso && !(c.rubro && c.rubro.toLowerCase().includes('tarjeta'))).forEach(c => {
+        g[c.rubro] = (g[c.rubro] || 0) + c.monto;
+    });
+    return g;
+}
+
+function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+// Línea de un solo rubro (3 puntos) + línea punteada horizontal en el límite.
+function dibujarLineaRubroR4(canvasId, meses, valores, limite, color) {
+    const cv = document.getElementById(canvasId); if (!cv) return;
+    const W = cv.offsetWidth || 280, H = 160;
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const maxV = Math.max(...valores, limite, 1);
+    const pad = { t: 16, r: 12, b: 24, l: 60 };
+    const W2 = W - pad.l - pad.r, H2 = H - pad.t - pad.b;
+    const xPos = i => pad.l + i * (W2 / (valores.length - 1 || 1));
+    const yPos = v => pad.t + H2 - (v / maxV) * H2;
+
+    // Línea de límite (punteada)
+    if (limite > 0) {
+        const yl = yPos(limite);
+        ctx.beginPath(); ctx.setLineDash([5, 4]);
+        ctx.moveTo(pad.l, yl); ctx.lineTo(W - pad.r, yl);
+        ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#64748b'; ctx.font = '10px Arial'; ctx.textAlign = 'left';
+        ctx.fillText('límite ' + fmt(limite), pad.l + 4, yl - 4 < pad.t + 10 ? yl + 12 : yl - 4);
+    }
+
+    // Área + línea del gasto
+    ctx.beginPath(); ctx.moveTo(xPos(0), yPos(valores[0]));
+    valores.forEach((v, i) => { if (i > 0) ctx.lineTo(xPos(i), yPos(v)); });
+    ctx.lineTo(xPos(valores.length - 1), H - pad.b); ctx.lineTo(xPos(0), H - pad.b); ctx.closePath();
+    ctx.fillStyle = color + '22'; ctx.fill();
+
+    ctx.beginPath(); ctx.moveTo(xPos(0), yPos(valores[0]));
+    valores.forEach((v, i) => { if (i > 0) ctx.lineTo(xPos(i), yPos(v)); });
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+
+    // Puntos + valor
+    valores.forEach((v, i) => {
+        const x = xPos(i), y = yPos(v);
+        const superado = limite > 0 && v > limite;
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = superado ? '#dc2626' : color; ctx.fill();
+        ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = superado ? '#dc2626' : '#1e293b';
+        ctx.fillText(fmt(v), x, y - 8 < pad.t + 8 ? y + 16 : y - 8);
+    });
+
+    // Eje X
+    ctx.font = '10px Arial'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center';
+    meses.forEach((m, i) => ctx.fillText(m.replace(' de ', ' '), xPos(i), H - 6));
+}
+
+// Modo combinado: todas las líneas de gasto juntas (sin límites individuales, quedarían ilegibles).
+function dibujarCombinadoR4(canvasId, mesesData, rubros) {
+    const cv = document.getElementById(canvasId); if (!cv) return;
+    const W = cv.offsetWidth || 600, H = 260;
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const series = rubros.map(r => mesesData.map(m => m.gasto[r] || 0));
+    const maxV = Math.max(...series.flat(), 1);
+    const pad = { t: 16, r: 16, b: 28, l: 70 };
+    const W2 = W - pad.l - pad.r, H2 = H - pad.t - pad.b;
+    const n = mesesData.length;
+    const xPos = i => pad.l + i * (W2 / (n - 1 || 1));
+    const yPos = v => pad.t + H2 - (v / maxV) * H2;
+
+    // Grilla Y (3 líneas)
+    [0, 0.5, 1].forEach(f => {
+        const y = pad.t + H2 - f * H2;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y);
+        ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.font = '10px Arial'; ctx.textAlign = 'right';
+        ctx.fillText(fmt(maxV * f), pad.l - 6, y + 3);
+    });
+
+    rubros.forEach((r, ri) => {
+        const valores = series[ri], col = colorRubro(r);
+        ctx.beginPath(); ctx.moveTo(xPos(0), yPos(valores[0]));
+        valores.forEach((v, i) => { if (i > 0) ctx.lineTo(xPos(i), yPos(v)); });
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+        valores.forEach((v, i) => { ctx.beginPath(); ctx.arc(xPos(i), yPos(v), 3.5, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); });
+    });
+
+    // Eje X
+    ctx.font = '10px Arial'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center';
+    mesesData.forEach((m, i) => ctx.fillText(m.nombre.replace(' de ', ' '), xPos(i), H - 8));
+}
+
 function cambiarMesReportes(id) {
     reportesMesId = id || null;
     renderContenido();
@@ -4048,7 +4255,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.15-dev1';
+const APP_VERSION = 'v3.8.16-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
