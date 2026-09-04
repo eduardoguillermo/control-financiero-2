@@ -51,6 +51,7 @@ let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
 let reportesMesId = null; // null = Mes Actual; si no, id de un mes en historicoMeses — permite correr Reportes a demanda sobre un mes cerrado
+let reportesSubTab = 'resumen'; // 'resumen' | 'rubros12' | 'claseO' | 'presupuesto' — qué reporte se muestra dentro de la pestaña Reportes
 let movBancoSelId = null; // cuenta bancaria seleccionada en la pestaña Movimientos
 let movMesSelYM = null; // mes (YYYY-MM) seleccionado en la pestaña Movimientos
 let movMoneda = 'ARS'; // 'ARS' | 'USD' — moneda seleccionada en la pestaña Movimientos
@@ -3127,6 +3128,24 @@ function buildReportes() {
     hdr.innerHTML=`<div><h2 style="margin:0;font-size:22px;color:#1e293b;">📈 Reportes Financieros${mesSel?' · <span style="color:#7c3aed;">'+mesSel.nombre+'</span>':''}</h2><p style="margin:4px 0 0;font-size:12px;color:#64748b;">${mesSel?'Vista de sólo lectura del período cerrado':new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}</p></div><div class="no-print" style="display:flex;align-items:center;">${selectorHtml}${excelBtn}<button onclick="window.print()" class="btn btn-dark no-print" style="font-size:12px;padding:8px 14px;">🖨️ Imprimir</button></div>`;
     wrap.appendChild(hdr);
 
+    // ── Menú de reportes: elegir cuál ver, en vez de mostrarlos todos apilados ──
+    const menuItems = [
+        { id: 'resumen',     label: '📋 Resumen del Mes' },
+        { id: 'rubros12',    label: '📊 Análisis por Rubro (12 meses)' },
+        { id: 'claseO',      label: '🏷️ Detalle Clase O' },
+        { id: 'presupuesto', label: '🎯 Cumplimiento de Presupuesto' },
+    ];
+    const menu = el('div', 'no-print'); menu.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;';
+    menuItems.forEach(mi => {
+        const on = reportesSubTab === mi.id;
+        const btn = el('button'); btn.className = 'btn';
+        btn.style.cssText = 'font-size:12px;padding:8px 14px;' + (on ? 'background:#4f46e5;color:white;font-weight:bold;' : 'background:#f1f5f9;color:#334155;');
+        btn.innerText = mi.label;
+        btn.onclick = () => { reportesSubTab = mi.id; renderContenido(); };
+        menu.appendChild(btn);
+    });
+    wrap.appendChild(menu);
+
     // Valores EN VIVO — se guardan antes de eventualmente pisarlos con el snapshot del mes cerrado.
     // El reporte 2 (tendencia por rubro entre meses) siempre debe mostrar el mes actual real, sin importar la selección.
     const liveBancos=listaBancos, liveTarjetas=listaTarjetas, liveServicios=listaServicios,
@@ -3149,6 +3168,7 @@ function buildReportes() {
 
     try {
 
+    if (reportesSubTab === 'resumen') {
     // ── REPORTE 1 ──────────────────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#4f46e5;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 1 · Resumen del Mes Actual</h3>');
 
@@ -3290,6 +3310,9 @@ function buildReportes() {
 
     } else { wrap.insertAdjacentHTML('beforeend','<div style="background:white;color:#1e293b;border-radius:8px;border:1px solid #cbd5e1;padding:24px;text-align:center;color:#94a3b8;margin-bottom:24px;">Sin datos en dólares para este mes.</div>'); }
 
+    } // fin reportesSubTab === 'resumen'
+
+    if (reportesSubTab === 'rubros12') {
     // ── REPORTE 2: ACUMULADO 12 MESES ─────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#f59e0b;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 2 · Análisis por Rubro · Últimos 12 Meses</h3>');
     const ultimos12=[...historicoMeses].slice(-12);
@@ -3346,6 +3369,9 @@ function buildReportes() {
     }
     renderTablaR2();
 
+    } // fin reportesSubTab === 'rubros12'
+
+    if (reportesSubTab === 'claseO') {
     // ── REPORTE 3: CLASE O ─────────────────────────────
     wrap.insertAdjacentHTML('beforeend','<h3 style="margin:0 0 16px;font-size:16px;font-weight:bold;color:#a855f7;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">Reporte 3 · Detalle Clase O — Mes Actual</h3>');
 
@@ -3406,9 +3432,13 @@ function buildReportes() {
 
     wrap.insertAdjacentHTML('beforeend', rO);
 
-    // ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO (3 MESES) ─────────────────
+    } // fin reportesSubTab === 'claseO'
+
+    if (reportesSubTab === 'presupuesto') {
+    // ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO (6 MESES) ─────────────────
     // Siempre usa datos EN VIVO (mes actual real), igual que el Reporte 2 — el selector de "mes cerrado" no lo afecta.
     buildReporte4Presupuesto(wrap, liveCorrientes, liveRubros);
+    } // fin reportesSubTab === 'presupuesto'
 
     } finally {
         // Restaurar siempre los valores en vivo, incluso si algo falló arriba
@@ -3422,13 +3452,13 @@ function buildReportes() {
 let r4RubrosSel = null; // null = todavía no inicializado (se arma la primera vez que se abre el reporte)
 let r4Modo = 'grilla';  // 'grilla' | 'combinado'
 
-// ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO — MES ACTUAL + 2 ANTERIORES ──
+// ── REPORTE 4: CUMPLIMIENTO DE PRESUPUESTO POR RUBRO — ÚLTIMOS 6 MESES (5 anteriores + mes actual) ──
 // Compara, para cada rubro elegido, el gasto real ($) de los últimos 3 meses contra
 // el límite/presupuesto ACTUAL de ese rubro (la app no guarda el límite histórico mes
 // a mes, así que se aplica el de hoy como referencia aproximada a los 3 meses).
 function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
-    // Hasta 2 meses cerrados más recientes (orden cronológico) + el mes actual en vivo al final.
-    const cerrados = [...historicoMeses].slice(-2);
+    // Hasta 5 meses cerrados más recientes (orden cronológico) + el mes actual en vivo al final = 6 puntos.
+    const cerrados = [...historicoMeses].slice(-5);
     const mesesData = cerrados.map(m => ({
         nombre: m.nombre,
         gasto: gastoPorRubroDeLista(m.datos && m.datos.listaCorrientes || [])
@@ -3484,7 +3514,7 @@ function buildReporte4Presupuesto(wrap, corrientesActual, rubrosActual) {
             html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">' + seleccionados.map(r => `<span style="font-size:11px;color:${colorRubro(r)};font-weight:bold;">● ${r}</span>`).join('') + '</div>';
             html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">💡 En modo combinado no se muestran las líneas de límite individuales (quedaría ilegible con varios rubros distintos) — cambiá a Grilla para verlas.</div>';
         } else {
-            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;">';
             seleccionados.forEach((r, i) => {
                 const limite = listaPresupRubros[r] || 0;
                 html += `<div><div style="font-size:12px;font-weight:bold;color:${colorRubro(r)};margin-bottom:6px;">${r}${limite>0?' · límite '+fmt(limite):''}</div><canvas id="r4-canvas-${i}" style="width:100%;height:160px;"></canvas></div>`;
@@ -3534,6 +3564,14 @@ function gastoPorRubroDeLista(lista) {
 
 function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
+// Con 6 puntos en el eje X, el nombre completo ("Marzo de 2026") no entra — se abrevia a "Mar'26".
+function abrevMesR4(nombre) {
+    if (nombre === 'Mes Actual') return nombre;
+    const m = nombre.match(/^(\w+)\s+de\s+(\d{4})$/i);
+    if (!m) return nombre;
+    return m[1].slice(0, 3).replace(/^\w/, c => c.toUpperCase()) + "'" + m[2].slice(2);
+}
+
 // Línea de un solo rubro (3 puntos) + línea punteada horizontal en el límite.
 function dibujarLineaRubroR4(canvasId, meses, valores, limite, color) {
     const cv = document.getElementById(canvasId); if (!cv) return;
@@ -3581,7 +3619,7 @@ function dibujarLineaRubroR4(canvasId, meses, valores, limite, color) {
 
     // Eje X
     ctx.font = '10px Arial'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center';
-    meses.forEach((m, i) => ctx.fillText(m.replace(' de ', ' '), xPos(i), H - 6));
+    meses.forEach((m, i) => ctx.fillText(abrevMesR4(m), xPos(i), H - 6));
 }
 
 // Modo combinado: todas las líneas de gasto juntas (sin límites individuales, quedarían ilegibles).
@@ -3619,7 +3657,7 @@ function dibujarCombinadoR4(canvasId, mesesData, rubros) {
 
     // Eje X
     ctx.font = '10px Arial'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center';
-    mesesData.forEach((m, i) => ctx.fillText(m.nombre.replace(' de ', ' '), xPos(i), H - 8));
+    mesesData.forEach((m, i) => ctx.fillText(abrevMesR4(m.nombre), xPos(i), H - 8));
 }
 
 function cambiarMesReportes(id) {
@@ -4255,7 +4293,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.16-dev1';
+const APP_VERSION = 'v3.8.17-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
