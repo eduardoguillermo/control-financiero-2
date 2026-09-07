@@ -1814,7 +1814,7 @@ function nuevoMes(opts) {
         if(!(listaPresupRubrosUSD[r]>0) && gastadoMesUSD[r]>0) listaPresupRubrosUSD[r]=Math.round(gastadoMesUSD[r]*100)/100;
     });
     // Limpiar pesos
-    listaServicios.forEach(s=>{ if(!s.esCuota && s.fPago){ s.fVto = cfDiaAntes(s.fPago); } s.pagado=0; s.fPago=''; });
+    listaServicios.forEach(s=>{ if(!s.esCuota){ if(s.fPago){ s.fVto = cfDiaAntes(s.fPago); } else if(s.pagado>0 && s.fVto){ s.fVto = cfDiaAntes(s.fVto); } } s.pagado=0; s.fPago=''; });
     listaCorrientes=listaCorrientes.filter(c=>!c.fechaPago);
     listaTransferencias=[];
     // Generar cuotas
@@ -1826,7 +1826,7 @@ function nuevoMes(opts) {
     listaCorrientesUSD.forEach(c=>{ if(mDU[c.medioPagoId]!==undefined) mDU[c.medioPagoId]+=c.monto*(c.esIngreso?-1:1); });
     listaTarjetasUSD.forEach(t=>{ t.saldo=Math.round((t.saldo+(mDU[t.id]||0))*100)/100; });
     // Limpiar USD
-    listaServiciosUSD.forEach(s=>{ if(!s.esCuota && s.fPago){ s.fVto = cfDiaAntes(s.fPago); } s.pagado=0; s.fPago=''; });
+    listaServiciosUSD.forEach(s=>{ if(!s.esCuota){ if(s.fPago){ s.fVto = cfDiaAntes(s.fPago); } else if(s.pagado>0 && s.fVto){ s.fVto = cfDiaAntes(s.fVto); } } s.pagado=0; s.fPago=''; });
     listaCorrientesUSD=[];
     listaTransferenciasUSD=[];
     listaComprasUSD=[];
@@ -4616,7 +4616,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.34-dev1';
+const APP_VERSION = 'v3.8.35-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
