@@ -232,6 +232,20 @@ function guardar() {
 function fmt(n) { return '$ ' + Math.round(n).toLocaleString('es-AR',{maximumFractionDigits:0}); }
 function cfFechaLocal(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function cfDiaAntes(fechaYMD) { const d = new Date(fechaYMD+'T00:00:00'); d.setDate(d.getDate()-1); return cfFechaLocal(d); }
+// Función de solo lectura para testear el cálculo de vencimientos SIN cerrar el mes ni modificar datos.
+// Se ejecuta manualmente desde la consola del navegador: cfTestVencimientos()
+function cfTestVencimientos(){
+    const preview = (lista, moneda) => lista.filter(s=>!s.esCuota).map(s=>{
+        let nuevo;
+        if(s.fPago) nuevo = cfDiaAntes(s.fPago) + ' (desde fecha de pago)';
+        else if(s.pagado>0 && s.fVto) nuevo = cfDiaAntes(s.fVto) + ' (desde vencimiento anterior, sin fecha de pago)';
+        else nuevo = (s.fVto || '(vacío)') + ' (sin cambio: no pagado)';
+        return s.nombre+' ['+moneda+'] | pagado: '+(s.pagado||0)+' | fPago: '+(s.fPago||'-')+' | fVto actual: '+(s.fVto||'-')+'  =>  nuevo: '+nuevo;
+    });
+    const out = preview(listaServicios,'ARS').concat(preview(listaServiciosUSD,'USD')).join('\n');
+    console.log(out);
+    alert(out || 'No hay servicios cargados.');
+}
 function fmtN(n)   { return Math.round(n).toLocaleString('es-AR',{maximumFractionDigits:0}); }
 function fmtUSD(n) { return 'USD ' + (Math.round(n*100)/100).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function clon(x)   { return JSON.parse(JSON.stringify(x)); }
@@ -4616,7 +4630,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.35-dev1';
+const APP_VERSION = 'v3.8.36-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
