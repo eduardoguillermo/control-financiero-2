@@ -286,6 +286,14 @@ async function cfCargarEstadoInicial() {
         }
         const mapa = new Map(filas.map(f => [f.k, f.v]));
         cfAplicarEstado(mapa);
+        // Auto-corrección: si algo ya vive en IndexedDB pero quedó también una copia
+        // vieja en localStorage (por ejemplo, si el borrado inicial no se completó),
+        // se limpia sola en cada arranque — no depende de que la migración haya sido perfecta.
+        K_ALL.forEach(k => {
+            if (mapa.has(k) && localStorage.getItem(k) !== null) {
+                try { localStorage.removeItem(k); } catch(e) {}
+            }
+        });
     } catch(e) { console.warn('cfCargarEstadoInicial:', e); }
 }
 function guardar() {
@@ -4748,7 +4756,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.42-dev1';
+const APP_VERSION = 'v3.8.43-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
