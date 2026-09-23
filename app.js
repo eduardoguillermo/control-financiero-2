@@ -1301,7 +1301,15 @@ function render() {
         [tdNom, tdCl, tdRub, tdInpDate(s.fVto,v=>{ s.fVto=v; guardar(); }),
          tdInpNum(s.presupuesto,v=>{ s.presupuesto=v; guardar(); calcDash(); },'tr'),
          tdPag, tdInpDate(s.fPago,v=>{ s.fPago=v; guardar(); }),
-         (()=>{ const td=el('td'); td.appendChild(selMediosPesos(s.medioPagoId,v=>{ s.medioPagoId=v; guardar(); calcDash(); })); return td; })(),
+         (()=>{ const td=el('td'); td.appendChild(selMediosPesos(s.medioPagoId,v=>{
+             if(v!==s.medioPagoId && s.pagado>0){
+                 const bkOld=listaBancos.find(b=>b.id===s.medioPagoId), tkOld=listaTarjetas.find(t=>t.id===s.medioPagoId);
+                 if(bkOld) bkOld.saldo+=s.pagado; else if(tkOld) tkOld.saldo-=s.pagado;
+                 const bkNew=listaBancos.find(b=>b.id===v), tkNew=listaTarjetas.find(t=>t.id===v);
+                 if(bkNew) bkNew.saldo-=s.pagado; else if(tkNew) tkNew.saldo+=s.pagado;
+             }
+             s.medioPagoId=v; guardar(); calcDash(); render();
+         })); return td; })(),
          tdEst,
          tdComprobante(s, render),
          (()=>{ const td=el('td','tc no-print'); td.style.whiteSpace='nowrap';
@@ -1508,11 +1516,13 @@ function calcDash() {
     if(dpFijos) {
         const fijosItems = listaServicios.filter(s=>s.presupuesto>s.pagado);
         if(fijosItems.length) {
+            const subtotalFijos = fijosItems.reduce((a,s)=>a+(s.presupuesto-s.pagado),0);
             dpFijos.innerHTML = '<div style="color:#64748b;font-size:10px;text-transform:uppercase;margin:4px 0 2px;">Fijos pendientes</div>' +
                 fijosItems.map(s=>{
                     const pend = s.presupuesto - s.pagado;
                     return '<div style="display:flex;justify-content:space-between;margin-bottom:2px;padding-left:8px;"><span style="color:#64748b;">− '+s.nombre+'</span><span style="color:#ef4444;">'+fmt(pend)+'</span></div>';
-                }).join('');
+                }).join('') +
+                '<div style="display:flex;justify-content:space-between;margin-top:4px;padding-left:8px;padding-top:4px;border-top:1px dashed #e2e8f0;font-weight:bold;"><span style="color:#334155;">Subtotal fijos</span><span style="color:#ef4444;">'+fmt(subtotalFijos)+'</span></div>';
         } else {
             dpFijos.innerHTML = '<div style="color:#10b981;font-size:10px;padding:2px 0;">✓ Todos los fijos pagados</div>';
         }
@@ -1521,10 +1531,12 @@ function calcDash() {
     if(dpCorr) {
         const corrItems = listaCorrientes.filter(c=>!c.fechaPago&&!c.esIngreso);
         if(corrItems.length) {
+            const subtotalCorr = corrItems.reduce((a,c)=>a+c.monto,0);
             dpCorr.innerHTML = '<div style="color:#64748b;font-size:10px;text-transform:uppercase;margin:4px 0 2px;">Corrientes sin pagar</div>' +
                 corrItems.map(c=>{
                     return '<div style="display:flex;justify-content:space-between;margin-bottom:2px;padding-left:8px;"><span style="color:#64748b;">− '+(c.detalle||c.rubro||'Sin detalle')+'</span><span style="color:#f59e0b;">'+fmt(c.monto)+'</span></div>';
-                }).join('');
+                }).join('') +
+                '<div style="display:flex;justify-content:space-between;margin-top:4px;padding-left:8px;padding-top:4px;border-top:1px dashed #e2e8f0;font-weight:bold;"><span style="color:#334155;">Subtotal corrientes</span><span style="color:#f59e0b;">'+fmt(subtotalCorr)+'</span></div>';
         }
     }
     // Presupuesto pesos — Fijos
@@ -2941,7 +2953,16 @@ function renderDolares() {
         const medSel=el('select'); medSel.className='inp';
         listaTarjetasUSD.forEach(t=>addOpt(medSel,t.id,'💳 '+t.nombre,t.id===s.medioPagoId));
         listaCuentasUSD.forEach(c=>addOpt(medSel,c.id,'🏦 '+c.nombre,c.id===s.medioPagoId));
-        medSel.onchange=e=>{ s.medioPagoId=e.target.value; guardar(); calcDashUSD(); };
+        medSel.onchange=e=>{
+            const v=e.target.value;
+            if(v!==s.medioPagoId && s.pagado>0){
+                const tkOld=listaTarjetasUSD.find(t=>t.id===s.medioPagoId), ckOld=listaCuentasUSD.find(c=>c.id===s.medioPagoId);
+                if(tkOld) tkOld.saldo-=s.pagado; else if(ckOld) ckOld.saldo+=s.pagado;
+                const tkNew=listaTarjetasUSD.find(t=>t.id===v), ckNew=listaCuentasUSD.find(c=>c.id===v);
+                if(tkNew) tkNew.saldo+=s.pagado; else if(ckNew) ckNew.saldo-=s.pagado;
+            }
+            s.medioPagoId=v; guardar(); calcDashUSD(); renderDolares();
+        };
         const estSpan=el('span'); estSpan.id='estu-'+s.id; estSpan.style.cssText='font-size:10px;font-weight:bold;padding:3px 6px;border-radius:4px;';
         const tdEst=el('td','tc'); tdEst.appendChild(estSpan);
         const tr=el('tr');
@@ -4843,7 +4864,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.46-dev1';
+const APP_VERSION = 'v3.8.48-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
