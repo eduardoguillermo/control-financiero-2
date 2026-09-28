@@ -51,6 +51,13 @@ let listaRubrosUSD       = ['Electrónica','Servicios Online','Transferencias','
 let tabActivo = null;
 let filtroCorrientes = '';
 let filtroClase = '';
+let filtroServicios = '';
+let filtroMedioServ = '';
+let filtroMedioCorr = '';
+// Filtros compartidos (texto + medio de pago) para Fijos y Corrientes
+function servPasaFiltro(s){ return (!filtroServicios||(s.nombre+' '+(s.rubro||'')).toLowerCase().includes(filtroServicios)) && (!filtroMedioServ||s.medioPagoId===filtroMedioServ); }
+function corrPasaFiltro(c){ return (!filtroCorrientes||(c.rubro+' '+c.detalle).toLowerCase().includes(filtroCorrientes)) && (!filtroClase||(c.clase||'M')===filtroClase) && (!filtroMedioCorr||c.medioPagoId===filtroMedioCorr); }
+function nombreMedioPesos(id){ const b=listaBancos.find(x=>x.id===id); if(b) return b.nombre; const t=listaTarjetas.find(x=>x.id===id); return t?t.nombre:''; }
 let reportesMesId = null; // null = Mes Actual; si no, id de un mes en historicoMeses — permite correr Reportes a demanda sobre un mes cerrado
 let reportesSubTab = 'resumen'; // 'resumen' | 'rubros12' | 'claseO' | 'presupuesto' — qué reporte se muestra dentro de la pestaña Reportes
 let movBancoSelId = null; // cuenta bancaria seleccionada en la pestaña Movimientos
@@ -1091,6 +1098,15 @@ function buildMesActual() {
                 <button type="submit" class="btn" style="background:#64748b;color:white;">Crear Rubro</button>
               </form>
             </div>
+            <div class="form-block" style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;">
+              <div style="font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Fusionar rubro</div>
+              <form id="form-fusion-rubro" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
+                <div><label style="font-size:11px;">Rubro origen</label><select id="fusion-origen" class="inp"></select></div>
+                <div><label style="font-size:11px;">Se convierte en</label><select id="fusion-destino" class="inp"></select></div>
+                <button type="submit" class="btn" style="background:#0284c7;color:white;">Fusionar</button>
+              </form>
+              <small style="font-size:10px;color:#94a3b8;display:block;margin-top:4px;">Mueve todos los servicios y corrientes del mes actual del rubro origen al destino, suma los presupuestos, y borra el rubro origen. No toca los meses históricos ya cerrados.</small>
+            </div>
             <div id="rubros-lista" class="rubros-wrap"></div>
           </div>
         </div>
@@ -1111,6 +1127,11 @@ function buildMesActual() {
                 </div>
                 <button type="submit" class="btn btn-add btn-indigo">Configurar Servicio Fijo</button>
               </form>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;" class="no-print">
+              <input type="text" id="filtro-servicios" placeholder="🔍 Buscar por nombre o rubro..." style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;" oninput="filtroServicios=this.value.toLowerCase();render();">
+              <select id="filtro-medio-servicios" style="width:150px;flex-shrink:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:white;color:#1e293b;" onchange="filtroMedioServ=this.value;render();"><option value="">Todos los medios</option></select>
+              <button class="btn" style="background:#f1f5f9;color:#334155;padding:7px 12px;font-size:12px;flex-shrink:0;" onclick="filtroServicios='';filtroMedioServ='';document.getElementById('filtro-servicios').value='';document.getElementById('filtro-medio-servicios').value='';render();">✕</button>
             </div>
             <table><thead><tr>
               <th style="width:15%">Servicio</th><th style="width:6%" class="tc">Clase</th><th style="width:9%" class="tc">Rubro</th><th style="width:9%" class="tc">Vto.</th>
@@ -1146,7 +1167,8 @@ function buildMesActual() {
             <div class="no-print" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <input type="text" id="filtro-corrientes" placeholder="🔍 Buscar por rubro o detalle..." style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;" oninput="filtroCorrientes=this.value.toLowerCase();render();">
               <select id="filtro-clase" style="width:130px;flex-shrink:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:white;color:#1e293b;" onchange="filtroClase=this.value;render();"><option value="">Todas las clases</option><option value="M">M — Mío</option><option value="O">O — Oma</option><option value="X">X — Otros</option></select>
-              <button class="btn" style="background:#f1f5f9;color:#334155;padding:7px 12px;font-size:12px;flex-shrink:0;" onclick="filtroCorrientes='';filtroClase='';document.getElementById('filtro-corrientes').value='';document.getElementById('filtro-clase').value='';render();">✕</button>
+              <select id="filtro-medio-corrientes" style="width:150px;flex-shrink:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:white;color:#1e293b;" onchange="filtroMedioCorr=this.value;render();"><option value="">Todos los medios</option></select>
+              <button class="btn" style="background:#f1f5f9;color:#334155;padding:7px 12px;font-size:12px;flex-shrink:0;" onclick="filtroCorrientes='';filtroClase='';filtroMedioCorr='';document.getElementById('filtro-corrientes').value='';document.getElementById('filtro-clase').value='';document.getElementById('filtro-medio-corrientes').value='';render();">✕</button>
             </div>
             <div id="wrap-corrientes"></div>
           </div>
@@ -1165,6 +1187,7 @@ function bindMesActual() {
     g('form-transf')?.addEventListener('submit', altaTransferencia);
     g('form-cuota')?.addEventListener('submit', altaCuota);
     g('form-rubro')?.addEventListener('submit', altaRubro);
+    g('form-fusion-rubro')?.addEventListener('submit', fusionarRubro);
     g('input-backup')?.addEventListener('change', importar);
     g('btn-nuevo-mes')?.addEventListener('click', () => nuevoMes());
     g('btn-actualizar-vtos')?.addEventListener('click', () => cfActualizarVencimientosDesdeUltimoMes());
@@ -1190,6 +1213,18 @@ function render() {
     if(sRubro){ sRubro.innerHTML=''; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sRubro,r,r)); }
     const sSrvRubro=document.getElementById('srv-rubro');
     if(sSrvRubro){ sSrvRubro.innerHTML='<option value="">— Sin rubro —</option>'; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sSrvRubro,r,r)); }
+    [['filtro-medio-servicios', 'filtroMedioServ'], ['filtro-medio-corrientes', 'filtroMedioCorr']].forEach(([id, varName])=>{
+        const sel=document.getElementById(id); if(!sel) return;
+        const actual = varName==='filtroMedioServ' ? filtroMedioServ : filtroMedioCorr;
+        sel.innerHTML='<option value="">Todos los medios</option>';
+        listaBancos.forEach(b=>addOpt(sel,b.id,'🏦 '+b.nombre,b.id===actual));
+        listaTarjetas.forEach(t=>addOpt(sel,t.id,'💳 '+t.nombre,t.id===actual));
+    });
+    const sFusOrig=document.getElementById('fusion-origen'), sFusDest=document.getElementById('fusion-destino');
+    if(sFusOrig && sFusDest){
+        sFusOrig.innerHTML=''; sFusDest.innerHTML='';
+        [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>{ addOpt(sFusOrig,r,r); addOpt(sFusDest,r,r); });
+    }
     [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>{
         const b=el('div','rubro-badge'); 
         const col=colorRubro(r);
@@ -1258,8 +1293,8 @@ function render() {
         const tdM=el('td','tr'); tdM.style.cssText='font-weight:bold;color:#f59e0b;'; tdM.innerText=fmt(t.monto);
         tTr.appendChild(fila([tdTxt(t.fecha||'—'),tdTxt(t.origenNombre),tdTxt(t.destinoNombre),tdM,tdBtn('✕',()=>elimTransferencia(t.id))]));
     }); }
-    // Servicios (ordenados)
-    [...listaServicios].sort((a,b)=>{ const est=s=>s.pagado>=s.presupuesto&&s.presupuesto>0?2:s.pagado>0?1:0; return est(a)!==est(b)?est(a)-est(b):a.nombre.localeCompare(b.nombre,'es'); }).forEach(s=>{
+    // Servicios (ordenados, filtrados)
+    [...listaServicios].filter(servPasaFiltro).sort((a,b)=>{ const est=s=>s.pagado>=s.presupuesto&&s.presupuesto>0?2:s.pagado>0?1:0; return est(a)!==est(b)?est(a)-est(b):a.nombre.localeCompare(b.nombre,'es'); }).forEach(s=>{
         const selCl=el('select'); selCl.className='inp';
         ['M','O','X'].forEach(op=>{ const o=el('option'); o.value=op; o.innerText=op; if((s.clase||'M')===op) o.selected=true; selCl.appendChild(o); });
         selCl.onchange=e=>{ s.clase=e.target.value; guardar(); };
@@ -1320,7 +1355,8 @@ function render() {
         ].forEach(td=>tr.appendChild(td));
         tS.appendChild(tr);
     });
-    if(!listaServicios.length) tS.innerHTML='<tr><td colspan="10" class="tc" style="color:#94a3b8;padding:12px;">Sin servicios.</td></tr>';
+    const serviciosFiltrados = listaServicios.filter(servPasaFiltro);
+    if(!serviciosFiltrados.length) tS.innerHTML='<tr><td colspan="10" class="tc" style="color:#94a3b8;padding:12px;">'+(listaServicios.length?'Sin resultados para ese filtro.':'Sin servicios.')+'</td></tr>';
     // Totales fila servicios
     const tSFoot = document.getElementById('t-servicios-foot');
     if(tSFoot) {
@@ -1345,7 +1381,7 @@ function render() {
         const thead=el('thead'); thead.innerHTML='<tr><th style="width:6%" class="tc">Clase</th><th style="width:16%">Rubro</th><th style="width:20%">Detalle</th><th style="width:13%">Medio</th><th style="width:11%;text-align:center;">F. Pago</th><th style="width:13%;text-align:right;">Monto ($)</th><th style="width:5%" class="tc no-print">📎</th><th style="width:6%" class="no-print"></th></tr>';
         const tbody=el('tbody');
         if(!listaCorrientes.length) { tbody.innerHTML='<tr><td colspan="6" class="tc" style="color:#94a3b8;padding:15px;">Sin egresos corrientes.</td></tr>'; }
-        else { listaCorrientes.filter(c=>(!filtroCorrientes||(c.rubro+' '+c.detalle).toLowerCase().includes(filtroCorrientes))&&(!filtroClase||(c.clase||'M')===filtroClase)).forEach(c=>{
+        else { listaCorrientes.filter(corrPasaFiltro).forEach(c=>{
             const selR=el('select'); selR.className='inp'; listaRubros.forEach(r=>addOpt(selR,r,r,r===c.rubro)); selR.onchange=e=>{ c.rubro=e.target.value; guardar(); };
             const inpD=el('input'); inpD.type='text'; inpD.className='inp'; inpD.value=c.detalle; inpD.onchange=e=>{ c.detalle=e.target.value.trim(); guardar(); };
             const inpFP=el('input'); inpFP.type='date'; inpFP.className='inp'; inpFP.value=c.fechaPago||'';
@@ -1378,13 +1414,13 @@ function render() {
         tbl.appendChild(thead); tbl.appendChild(tbody); wC.appendChild(tbl);
 
         // Subtotal filtrado
-        const corrFiltradas = listaCorrientes.filter(c=>(!filtroCorrientes||(c.rubro+' '+c.detalle).toLowerCase().includes(filtroCorrientes))&&(!filtroClase||(c.clase||'M')===filtroClase));
+        const corrFiltradas = listaCorrientes.filter(corrPasaFiltro);
         const subEgr = corrFiltradas.filter(c=>!c.esIngreso).reduce((a,c)=>a+c.monto,0);
         const subIng = corrFiltradas.filter(c=>c.esIngreso).reduce((a,c)=>a+c.monto,0);
         const subPag = corrFiltradas.filter(c=>!c.esIngreso&&c.fechaPago).reduce((a,c)=>a+c.monto,0);
         const subDiv = el('div'); subDiv.style.cssText='margin-top:8px;padding:8px 12px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;';
-        if(filtroCorrientes||filtroClase) {
-            const badgeTxt = [filtroCorrientes?'"'+filtroCorrientes+'"':'', filtroClase?'Clase '+filtroClase:''].filter(Boolean).join(' · ');
+        if(filtroCorrientes||filtroClase||filtroMedioCorr) {
+            const badgeTxt = [filtroCorrientes?'"'+filtroCorrientes+'"':'', filtroClase?'Clase '+filtroClase:'', filtroMedioCorr?'💳 '+nombreMedioPesos(filtroMedioCorr):''].filter(Boolean).join(' · ');
             subDiv.innerHTML = '<span style="color:#64748b;font-weight:bold;">🔍 '+badgeTxt+'</span>'
                 + '<span style="color:#ef4444;">Egresos: <b>'+fmt(subEgr)+'</b></span>'
                 + (subIng>0?'<span style="color:#0284c7;">Ingresos: <b>'+fmt(subIng)+'</b></span>':'')
@@ -1844,6 +1880,22 @@ function elimCuota(id)   {
     listaCuotas=listaCuotas.filter(c=>c.id!==id); listaServicios=listaServicios.filter(s=>s.cuotaId!==id); guardar(); render();
 }
 function elimRubro(r)    { if(listaCorrientes.some(c=>c.rubro===r) || listaServicios.some(s=>s.rubro===r)){alert('Rubro en uso.');return;} listaRubros=listaRubros.filter(x=>x!==r); guardar(); render(); }
+function fusionarRubro(e) {
+    e.preventDefault();
+    const origen = vGet('fusion-origen'), destino = vGet('fusion-destino');
+    if(!origen || !destino || origen===destino){ alert('Elegí dos rubros distintos.'); return; }
+    if(!confirm('¿Mover todo "'+origen+'" a "'+destino+'" y borrar "'+origen+'"? Esta acción no se puede deshacer.')) return;
+
+    listaServicios.filter(s=>s.rubro===origen).forEach(s=>{ s.rubro=destino; });
+    listaCorrientes.filter(c=>c.rubro===origen).forEach(c=>{ c.rubro=destino; });
+    if(listaPresupRubros[origen]){
+        listaPresupRubros[destino] = (listaPresupRubros[destino]||0) + listaPresupRubros[origen];
+        delete listaPresupRubros[origen];
+    }
+    listaRubros = listaRubros.filter(r=>r!==origen);
+    guardar(); render();
+    alert('Fusión completa: "'+origen+'" ahora es "'+destino+'".');
+}
 function elimCorriente(id) {
     const c=listaCorrientes.find(x=>x.id===id);
     if(c&&c.fechaPago&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo+=c.esIngreso?-c.monto:c.monto; }
@@ -4864,7 +4916,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.48-dev1';
+const APP_VERSION = 'v3.8.53-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -5157,12 +5209,19 @@ function buildContextoApp() {
     const corrUSDIng  = listaCorrientesUSD.filter(function(c){ return c.fechaPago&&c.esIngreso; }).reduce(function(a,c){ return a+c.monto; }, 0);
     const servUSDPag  = listaServiciosUSD.filter(function(s){ return s.pagado>0; }).reduce(function(a,s){ return a+s.pagado; }, 0);
     const cuotasActivas = listaCuotas.filter(function(c){ return c.cuotaActual<=c.totalCuotas; });
-    const hist3 = historicoMeses.slice(-3).map(function(m){ return {
-        nombre: m.nombre,
-        banco: (m.datos.listaBancos||[]).reduce(function(a,b){ return a+b.saldo; },0),
-        egresado: (m.datos.listaCorrientes||[]).filter(function(c){ return c.fechaPago&&!c.esIngreso; }).reduce(function(a,c){ return a+c.monto; },0) +
-                  (m.datos.listaServicios||[]).filter(function(s){ return s.pagado>0; }).reduce(function(a,s){ return a+s.pagado; },0)
-    }; });
+    const hist3 = historicoMeses.slice(-3).map(function(m){
+        const corr = (m.datos.listaCorrientes||[]).filter(function(c){ return c.fechaPago&&!c.esIngreso; });
+        const serv = (m.datos.listaServicios||[]).filter(function(s){ return s.pagado>0; });
+        const porRubroMes = {};
+        corr.forEach(function(c){ porRubroMes[c.rubro]=(porRubroMes[c.rubro]||0)+c.monto; });
+        serv.forEach(function(s){ if(s.rubro) porRubroMes[s.rubro]=(porRubroMes[s.rubro]||0)+s.pagado; });
+        return {
+            nombre: m.nombre,
+            banco: (m.datos.listaBancos||[]).reduce(function(a,b){ return a+b.saldo; },0),
+            egresado: corr.reduce(function(a,c){ return a+c.monto; },0) + serv.reduce(function(a,s){ return a+s.pagado; },0),
+            porRubro: porRubroMes
+        };
+    });
 
     var lines = [];
     lines.push('Sos un asistente financiero personal. Respondé en español, de forma concisa y directa. Usá números con formato local argentino.');
@@ -5203,7 +5262,12 @@ function buildContextoApp() {
     lines.push('- Servicios USD pagados: ' + servUSDPag.toFixed(2));
     lines.push('');
     lines.push('HISTORICO 3 MESES:');
-    hist3.forEach(function(m){ lines.push('- ' + m.nombre + ': banco $' + m.banco.toLocaleString('es-AR') + ' | egresado $' + m.egresado.toLocaleString('es-AR')); });
+    hist3.forEach(function(m){
+        lines.push('- ' + m.nombre + ': banco $' + m.banco.toLocaleString('es-AR') + ' | egresado $' + m.egresado.toLocaleString('es-AR'));
+        Object.entries(m.porRubro).sort(function(a,b){ return b[1]-a[1]; }).forEach(function(e){
+            lines.push('    · ' + e[0] + ': $' + e[1].toLocaleString('es-AR'));
+        });
+    });
     lines.push('');
     lines.push('PRESUPUESTOS POR RUBRO:');
     Object.entries(listaPresupRubros).filter(function(e){ return e[1]>0; }).forEach(function(e){ lines.push('- ' + e[0] + ': $' + e[1].toLocaleString('es-AR')); });
@@ -5295,7 +5359,7 @@ async function enviarConsultaAI() {
                 'Authorization': 'Bearer ' + apiKey
             },
             body: JSON.stringify({
-                model: 'llama-3.3-70b-versatile',
+                model: 'openai/gpt-oss-120b',
                 messages: messages,
                 max_tokens: 1024
             })
