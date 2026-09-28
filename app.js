@@ -879,11 +879,11 @@ function inpNum(val, onChange) {
     inp.value=fmtN(last);
     inp.addEventListener('focus', ()=>{ inp.value=last; });
     inp.addEventListener('change', e=>{
-        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        const v=Math.round(parseNum(e.target.value));
         last=v; onChange(v); inp.value=fmtN(v);
     });
     inp.addEventListener('blur', e=>{
-        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        const v=Math.round(parseNum(e.target.value));
         if(v!==last){ last=v; onChange(v); }
         inp.value=fmtN(last);
     });
@@ -896,11 +896,11 @@ function inpNumPagado(val, onChange) {
     inp.value = last===0 ? '' : fmtN(last);
     inp.addEventListener('focus', ()=>{ inp.value = last===0 ? '' : last; });
     inp.addEventListener('change', e=>{
-        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        const v=Math.round(parseNum(e.target.value));
         last=v; onChange(v); inp.value = v===0 ? '' : fmtN(v);
     });
     inp.addEventListener('blur', e=>{
-        const v=Math.round(parseFloat(String(e.target.value).replace(/\./g,'').replace(',','.'))||0);
+        const v=Math.round(parseNum(e.target.value));
         if(v!==last){ last=v; onChange(v); }
         inp.value = last===0 ? '' : fmtN(last);
     });
@@ -1066,6 +1066,7 @@ function buildMesActual() {
             <div class="form-block">
               <form id="form-transf">
                 <div class="form-row"><div><label>Origen</label><select id="transf-origen" required></select></div><div><label>Destino</label><select id="transf-destino" required></select></div></div>
+                <small style="font-size:10px;color:#94a3b8;display:block;margin:-4px 0 6px;">Para pagar una tarjeta usá el botón 💳 Pagar en la sección Tarjetas.</small>
                 <div class="form-row"><div><label>Monto ($)</label><input type="number" id="transf-monto" required placeholder="0" step="1"></div><div><label>Fecha</label><input type="date" id="transf-fecha" required></div></div>
                 <button type="submit" class="btn btn-add btn-amber">Registrar Transferencia</button>
               </form>
@@ -1209,7 +1210,8 @@ function render() {
     tB.innerHTML=''; tT.innerHTML=''; tS.innerHTML=''; tTr.innerHTML=''; rL.innerHTML='';
     [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) s.innerHTML=''; });
     listaBancos.forEach(b=>{ [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) addOpt(s,b.id,'🏦 '+b.nombre); }); });
-    listaTarjetas.forEach(t=>{ [sMedio,sOrig,sDest,sMedCuota].forEach(s=>{ if(s) addOpt(s,t.id,'💳 '+t.nombre); }); });
+    // Las tarjetas NO van en origen/destino de transferencias: una transferencia sumaría deuda al destino. Para pagar una tarjeta está el botón 💳 Pagar.
+    listaTarjetas.forEach(t=>{ [sMedio,sMedCuota].forEach(s=>{ if(s) addOpt(s,t.id,'💳 '+t.nombre); }); });
     if(sRubro){ sRubro.innerHTML=''; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sRubro,r,r)); }
     const sSrvRubro=document.getElementById('srv-rubro');
     if(sSrvRubro){ sSrvRubro.innerHTML='<option value="">— Sin rubro —</option>'; [...listaRubros].sort((a,b)=>a.localeCompare(b,'es')).forEach(r=>addOpt(sSrvRubro,r,r)); }
@@ -1262,7 +1264,7 @@ function render() {
     }
     // Tarjetas
     listaTarjetas.forEach(t=>{
-        const inp=inpNum(t.saldo,v=>{ t.saldo=v; guardar(); calcDash(); }); inp.id='saldo-t-'+t.id;
+        const inp=inpNum(t.saldo,v=>{ t.saldo=v-cfConsumoMesTarjeta(t.id); guardar(); calcDash(); }); inp.id='saldo-t-'+t.id;   // el campo muestra el TOTAL (saldo+consumos del mes): se guarda solo el arrastre
         const tdS=el('td','tr'); tdS.appendChild(inp);
         const inpV=inpNum(t.vencimiento||0,v=>{ t.vencimiento=v; guardar(); }); inpV.id='venc-t-'+t.id;
         const tdV=el('td','tr'); tdV.appendChild(inpV);
@@ -1312,9 +1314,7 @@ function render() {
             const diff=v-s.pagado;
             if(diff!==0){
                 const bk=listaBancos.find(b=>b.id===s.medioPagoId);
-                const tk=listaTarjetas.find(t=>t.id===s.medioPagoId);
-                if(bk) bk.saldo-=diff;
-                else if(tk) tk.saldo+=diff;
+                if(bk) bk.saldo-=diff;   // tarjeta: no se toca acá (el consumo se suma vía cfConsumoMesTarjeta)
             }
             s.pagado=v; guardar(); calcDash();
             if(s.presupuesto>0 && v>s.presupuesto) alert('⚠️ Pagado ('+fmt(v)+') supera el presupuesto ('+fmt(s.presupuesto)+') en '+fmt(v-s.presupuesto)+'.');
@@ -1338,10 +1338,9 @@ function render() {
          tdPag, tdInpDate(s.fPago,v=>{ s.fPago=v; guardar(); }),
          (()=>{ const td=el('td'); td.appendChild(selMediosPesos(s.medioPagoId,v=>{
              if(v!==s.medioPagoId && s.pagado>0){
-                 const bkOld=listaBancos.find(b=>b.id===s.medioPagoId), tkOld=listaTarjetas.find(t=>t.id===s.medioPagoId);
-                 if(bkOld) bkOld.saldo+=s.pagado; else if(tkOld) tkOld.saldo-=s.pagado;
-                 const bkNew=listaBancos.find(b=>b.id===v), tkNew=listaTarjetas.find(t=>t.id===v);
-                 if(bkNew) bkNew.saldo-=s.pagado; else if(tkNew) tkNew.saldo+=s.pagado;
+                 // Solo los bancos mueven saldo al instante; una tarjeta (vieja o nueva) lo toma vía cfConsumoMesTarjeta.
+                 const bkOld=listaBancos.find(b=>b.id===s.medioPagoId); if(bkOld) bkOld.saldo+=s.pagado;
+                 const bkNew=listaBancos.find(b=>b.id===v); if(bkNew) bkNew.saldo-=s.pagado;
              }
              s.medioPagoId=v; guardar(); calcDash(); render();
          })); return td; })(),
@@ -1481,7 +1480,7 @@ function renderPresupRubros() {
 }
 function actualizarPresupRubro(inp) {
     const r = inp.getAttribute('data-rubro');
-    const v = parseFloat(inp.value.replace(/\./g,''))||0;
+    const v = Math.round(parseNum(inp.value));
     if(v>0) listaPresupRubros[r]=v; else delete listaPresupRubros[r];
     guardar(); renderPresupRubros();
     if(tabActivo==='presupuesto') renderContenido();
@@ -1498,6 +1497,16 @@ function toggleRubroReporte4(cb) {
 // ═══════════════════════════════════════════
 //  DASHBOARD PESOS
 // ═══════════════════════════════════════════
+// Modelo de tarjetas (pesos): t.saldo es el ARRASTRE de meses anteriores. Los consumos del mes
+// (servicios pagados + corrientes con fecha de pago) se suman dinámicamente en pantalla y recién
+// se acumulan en t.saldo al cerrar el mes (nuevoMes). Por eso pagar/borrar/mover un servicio de
+// tarjeta NO debe tocar t.saldo: si lo hiciera, el consumo se contaría dos veces.
+function cfConsumoMesTarjeta(id) {
+    let total = 0;
+    listaServicios.forEach(s=>{ if(s.medioPagoId===id && s.pagado>0) total += Math.round(s.pagado); });
+    listaCorrientes.forEach(c=>{ if(c.medioPagoId===id && c.fechaPago) total += Math.round(c.monto) * (c.esIngreso ? -1 : 1); });
+    return total;
+}
 function calcDash() {
     const mDeb={}; listaBancos.forEach(b=>mDeb[b.id]=0); listaTarjetas.forEach(t=>mDeb[t.id]=0);
     let totalPag=0, fijosPend=0;
@@ -1863,10 +1872,14 @@ function elimBanco(id)   { if(confirm('¿Remover esta cuenta?')) { listaBancos=l
 function elimTarjeta(id) { if(confirm('¿Remover esta tarjeta?')){ listaTarjetas=listaTarjetas.filter(t=>t.id!==id); guardar(); render(); } }
 function elimServicio(id){
     const s=listaServicios.find(x=>x.id===id);
+    if(s){
+        const bkc=listaBancos.find(b=>b.id===s.medioPagoId);
+        const efecto = s.pagado>0 ? ' Estaba pagado ('+fmt(s.pagado)+'): '+(bkc ? 'se devuelve a '+bkc.nombre+'.' : 'se quita del consumo de la tarjeta.') : '';
+        if(!confirm('¿Eliminar el servicio "'+s.nombre+'"?'+efecto)) return;
+    }
     if(s && s.pagado>0){
         const bk=listaBancos.find(b=>b.id===s.medioPagoId);
-        const tk=listaTarjetas.find(t=>t.id===s.medioPagoId);
-        if(bk) bk.saldo+=s.pagado; else if(tk) tk.saldo-=s.pagado;
+        if(bk) bk.saldo+=s.pagado;   // tarjeta: el consumo desaparece solo al quitar el servicio
     }
     listaServicios=listaServicios.filter(x=>x.id!==id); guardar(); render();
 }
@@ -1874,12 +1887,11 @@ function elimCuota(id)   {
     if(!confirm('¿Eliminar esta cuota?')) return;
     listaServicios.filter(s=>s.cuotaId===id && s.pagado>0).forEach(s=>{
         const bk=listaBancos.find(b=>b.id===s.medioPagoId);
-        const tk=listaTarjetas.find(t=>t.id===s.medioPagoId);
-        if(bk) bk.saldo+=s.pagado; else if(tk) tk.saldo-=s.pagado;
+        if(bk) bk.saldo+=s.pagado;
     });
     listaCuotas=listaCuotas.filter(c=>c.id!==id); listaServicios=listaServicios.filter(s=>s.cuotaId!==id); guardar(); render();
 }
-function elimRubro(r)    { if(listaCorrientes.some(c=>c.rubro===r) || listaServicios.some(s=>s.rubro===r)){alert('Rubro en uso.');return;} listaRubros=listaRubros.filter(x=>x!==r); guardar(); render(); }
+function elimRubro(r)    { if(listaCorrientes.some(c=>c.rubro===r) || listaServicios.some(s=>s.rubro===r)){alert('Rubro en uso.');return;} if(!confirm('¿Eliminar el rubro "'+r+'"?')) return; listaRubros=listaRubros.filter(x=>x!==r); guardar(); render(); }
 function fusionarRubro(e) {
     e.preventDefault();
     const origen = vGet('fusion-origen'), destino = vGet('fusion-destino');
@@ -1898,11 +1910,17 @@ function fusionarRubro(e) {
 }
 function elimCorriente(id) {
     const c=listaCorrientes.find(x=>x.id===id);
+    if(c){
+        const bkc=listaBancos.find(b=>b.id===c.medioPagoId);
+        const efecto = (c.fechaPago&&esCuentaLiq(c.medioPagoId)&&bkc) ? (c.esIngreso ? ' Se descontarán '+fmt(c.monto)+' de '+bkc.nombre+'.' : ' Se devolverán '+fmt(c.monto)+' a '+bkc.nombre+'.') : '';
+        if(!confirm('¿Eliminar '+(c.esIngreso?'el ingreso':'el gasto')+' "'+(c.detalle||c.rubro)+'" ('+fmt(c.monto)+')?'+efecto)) return;
+    }
     if(c&&c.fechaPago&&esCuentaLiq(c.medioPagoId)){ const bk=listaBancos.find(b=>b.id===c.medioPagoId); if(bk) bk.saldo+=c.esIngreso?-c.monto:c.monto; }
     listaCorrientes=listaCorrientes.filter(x=>x.id!==id); guardar(); render();
 }
 function elimTransferencia(id) {
     const t=listaTransferencias.find(x=>x.id===id);
+    if(t && !confirm('¿Eliminar la transferencia de '+fmt(t.monto)+' ('+(t.origenNombre||'?')+' → '+(t.destinoNombre||'?')+')? Se revierte en ambas cuentas.')) return;
     if(t){ const o=listaBancos.find(b=>b.id===t.origenId)||listaTarjetas.find(x=>x.id===t.origenId); const d=listaBancos.find(b=>b.id===t.destinoId)||listaTarjetas.find(x=>x.id===t.destinoId); if(o) o.saldo+=t.monto; if(d) d.saldo-=t.monto; }
     listaTransferencias=listaTransferencias.filter(x=>x.id!==id); guardar(); render();
 }
@@ -2709,6 +2727,7 @@ function buildDolares() {
             <div class="form-block">
               <form id="form-transf-usd">
                 <div class="form-row"><div><label>Origen</label><select id="transfusd-origen" required></select></div><div><label>Destino</label><select id="transfusd-destino" required></select></div></div>
+                <small style="font-size:10px;color:#94a3b8;display:block;margin:-4px 0 6px;">Para pagar una tarjeta USD usá el botón 💳 Pagar en la sección de tarjetas.</small>
                 <div class="form-row"><div><label>Monto (USD)</label><input type="number" id="transfusd-monto" required placeholder="0" step="0.01"></div><div><label>Fecha</label><input type="date" id="transfusd-fecha" required></div></div>
                 <button type="submit" class="btn btn-add btn-amber">Registrar Transferencia USD</button>
               </form>
@@ -2884,7 +2903,7 @@ function renderDolares() {
     const tTrU=document.getElementById('t-transf-usd'), selOU=document.getElementById('transfusd-origen'), selDU=document.getElementById('transfusd-destino');
     [selOU,selDU].forEach(s=>{ if(s) s.innerHTML=''; });
     listaCuentasUSD.forEach(c=>{ [selOU,selDU].forEach(s=>{ if(s) addOpt(s,c.id,'🏦 '+c.nombre); }); });
-    listaTarjetasUSD.forEach(t=>{ [selOU,selDU].forEach(s=>{ if(s) addOpt(s,t.id,'💳 '+t.nombre); }); });
+    // Igual que en pesos: las tarjetas USD no se ofrecen en transferencias (para pagarlas está 💳 Pagar).
     if(tTrU){
         tTrU.innerHTML='';
         if(!listaTransferenciasUSD.length) { tTrU.innerHTML='<tr><td colspan="5" class="tc" style="color:#94a3b8;padding:12px;">Sin transferencias.</td></tr>'; }
@@ -3008,10 +3027,9 @@ function renderDolares() {
         medSel.onchange=e=>{
             const v=e.target.value;
             if(v!==s.medioPagoId && s.pagado>0){
-                const tkOld=listaTarjetasUSD.find(t=>t.id===s.medioPagoId), ckOld=listaCuentasUSD.find(c=>c.id===s.medioPagoId);
-                if(tkOld) tkOld.saldo-=s.pagado; else if(ckOld) ckOld.saldo+=s.pagado;
-                const tkNew=listaTarjetasUSD.find(t=>t.id===v), ckNew=listaCuentasUSD.find(c=>c.id===v);
-                if(tkNew) tkNew.saldo+=s.pagado; else if(ckNew) ckNew.saldo-=s.pagado;
+                // Solo las cuentas mueven saldo al instante; una tarjeta USD lo toma vía calcMDU (consumo del mes).
+                const ckOld=listaCuentasUSD.find(c=>c.id===s.medioPagoId); if(ckOld) ckOld.saldo+=s.pagado;
+                const ckNew=listaCuentasUSD.find(c=>c.id===v); if(ckNew) ckNew.saldo-=s.pagado;
             }
             s.medioPagoId=v; guardar(); calcDashUSD(); renderDolares();
         };
@@ -3023,7 +3041,7 @@ function renderDolares() {
          (()=>{ const td=el('td','tr');
             td.appendChild(inpNumUSD(s.pagado,v=>{
                 const diff=v-s.pagado;
-                if(diff!==0){ const tk=listaTarjetasUSD.find(t=>t.id===s.medioPagoId), ck=listaCuentasUSD.find(c=>c.id===s.medioPagoId); if(tk) tk.saldo+=diff; else if(ck) ck.saldo-=diff; }
+                if(diff!==0){ const ck=listaCuentasUSD.find(c=>c.id===s.medioPagoId); if(ck) ck.saldo-=diff; }   // tarjeta USD: consumo vía calcMDU
                 s.pagado=v; guardar(); calcDashUSD();
             })); return td; })(),
          tdInpDate(s.fPago,v=>{ s.fPago=v; guardar(); }),
@@ -3099,20 +3117,30 @@ function elimCuentaUSD(id)    { if(confirm('¿Remover cuenta USD?'))  { listaCue
 function elimTarjetaUSD(id)   { if(confirm('¿Remover tarjeta USD?')) { listaTarjetasUSD=listaTarjetasUSD.filter(t=>t.id!==id);     guardar(); renderDolares(); } }
 function elimServicioUSD(id)  {
     const s=listaServiciosUSD.find(x=>x.id===id);
+    if(s){
+        const ckc=listaCuentasUSD.find(c=>c.id===s.medioPagoId);
+        const efecto = s.pagado>0 ? ' Estaba pagado ('+fmtUSD(s.pagado)+'): '+(ckc ? 'se devuelve a '+ckc.nombre+'.' : 'se quita del consumo de la tarjeta.') : '';
+        if(!confirm('¿Eliminar el servicio "'+s.nombre+'"?'+efecto)) return;
+    }
     if(s && s.pagado>0){
-        const tk=listaTarjetasUSD.find(t=>t.id===s.medioPagoId);
         const ck=listaCuentasUSD.find(c=>c.id===s.medioPagoId);
-        if(tk) tk.saldo-=s.pagado; else if(ck) ck.saldo+=s.pagado;
+        if(ck) ck.saldo+=s.pagado;   // tarjeta USD: el consumo desaparece solo al quitar el servicio
     }
     listaServiciosUSD=listaServiciosUSD.filter(x=>x.id!==id); guardar(); renderDolares();
 }
 function elimCorrienteUSD(id) {
     const c=listaCorrientesUSD.find(x=>x.id===id);
+    if(c){
+        const ckc=listaCuentasUSD.find(x=>x.id===c.medioPagoId);
+        const efecto = ckc ? (c.esIngreso ? ' Se descontarán '+fmtUSD(c.monto)+' de '+ckc.nombre+'.' : ' Se devolverán '+fmtUSD(c.monto)+' a '+ckc.nombre+'.') : '';
+        if(!confirm('¿Eliminar '+(c.esIngreso?'el ingreso':'el gasto')+' USD "'+(c.detalle||c.rubro)+'" ('+fmtUSD(c.monto)+')?'+efecto)) return;
+    }
     if(c){ const cuentaMedio=listaCuentasUSD.find(x=>x.id===c.medioPagoId); if(cuentaMedio) cuentaMedio.saldo += c.esIngreso ? -c.monto : c.monto; }
     listaCorrientesUSD=listaCorrientesUSD.filter(x=>x.id!==id); guardar(); renderDolares();
 }
 function elimTransferenciaUSD(id) {
     const t=listaTransferenciasUSD.find(x=>x.id===id);
+    if(t && !confirm('¿Eliminar la transferencia de '+fmtUSD(t.monto)+' ('+(t.origenNombre||'?')+' → '+(t.destinoNombre||'?')+')? Se revierte en ambas cuentas.')) return;
     if(t){ const o=listaCuentasUSD.find(c=>String(c.id)===String(t.origenId))||listaTarjetasUSD.find(x=>String(x.id)===String(t.origenId)); const d=listaCuentasUSD.find(c=>String(c.id)===String(t.destinoId))||listaTarjetasUSD.find(x=>String(x.id)===String(t.destinoId)); if(o) o.saldo+=t.monto; if(d) d.saldo-=t.monto; }
     listaTransferenciasUSD=listaTransferenciasUSD.filter(x=>x.id!==id); guardar(); renderDolares();
 }
@@ -3140,6 +3168,7 @@ function altaCompraUSD(e) {
 }
 function elimCompraUSD(id) {
     const c=listaComprasUSD.find(x=>x.id===id);
+    if(c && !confirm('¿Eliminar la compra de dólares ('+fmt(c.montoARS)+' → '+fmtUSD(c.montoUSD)+')? Se revierte en el banco y en la cuenta USD.')) return;
     if(c){ const o=listaBancos.find(b=>String(b.id)===String(c.origenId)); const d=listaCuentasUSD.find(x=>String(x.id)===String(c.destinoId)); if(o) o.saldo+=c.montoARS; if(d) d.saldo-=c.montoUSD; }
     listaComprasUSD=listaComprasUSD.filter(x=>x.id!==id); guardar(); renderDolares();
 }
@@ -4415,8 +4444,8 @@ function altaAccion(e) {
     listaAcciones.push({id:'acc_'+Date.now(), ticker, desc:vGet('acc-desc'), cant:parseInt(document.getElementById('acc-cant').value)||1});
     guardar(); e.target.reset(); actualizarInversiones(true);
 }
-function elimInstrumento(id) { listaInstrumentos=listaInstrumentos.filter(function(x){ return x.id!==id; }); guardar(); renderInstrumentos(); calcDashInv(); }
-function elimAccion(id)      { listaAcciones=listaAcciones.filter(function(x){ return x.id!==id; });         guardar(); renderAcciones(); calcDashInv(); }
+function elimInstrumento(id) { const it=listaInstrumentos.find(function(x){ return x.id===id; }); if(it && !confirm('¿Eliminar el instrumento "'+it.nombre+'"?')) return; listaInstrumentos=listaInstrumentos.filter(function(x){ return x.id!==id; }); guardar(); renderInstrumentos(); calcDashInv(); }
+function elimAccion(id)      { const ac=listaAcciones.find(function(x){ return x.id===id; }); if(ac && !confirm('¿Eliminar la acción '+ac.ticker+'?')) return; listaAcciones=listaAcciones.filter(function(x){ return x.id!==id; });         guardar(); renderAcciones(); calcDashInv(); }
 
 function renderInstrumentos() {
     const wrap = document.getElementById('t-instrumentos'); if(!wrap) return;
@@ -4916,7 +4945,7 @@ function btnAyuda(ancla) {
     return `<button onclick="window.open('./instructivo.html#${ancla}','_blank','width=1100,height=750,resizable=yes,scrollbars=yes')" title="Ver ayuda" style="background:#f59e0b;border:none;color:#1e293b;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:8px;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,0.3);" class="no-print">?</button>`;
 }
 
-const APP_VERSION = 'v3.8.53-dev1';
+const APP_VERSION = 'v3.8.55-dev1';
 const GDRIVE_CLIENT_ID='1049169592532-is5j1j4s1bmgrc9tsq48slrgul8fbj17.apps.googleusercontent.com';
 const GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly';
 const CF_DRIVE_FOLDER = 'ControlFinanciero'; // misma carpeta visible que prod: dev solo LEE, nunca escribe (ver driveSubir deshabilitado)
@@ -6424,10 +6453,12 @@ function confirmarPagoTarjeta(tarjetaId) {
     const banco = listaBancos.find(b => b.id === bancoId);
     if (!banco) { alert('Banco no encontrado.'); return; }
 
+    const vencPrevio = t.vencimiento||0;
     banco.saldo -= monto;
     t.saldo -= monto;
-    t.vencimiento = Math.max(0, (t.vencimiento||0) - monto);
-    listaPagosTarjeta.push({ id: 'pt_' + Date.now(), tarjetaId: t.id, tarjetaNombre: t.nombre, bancoId, bancoNombre: banco.nombre, monto, fecha });
+    t.vencimiento = Math.max(0, vencPrevio - monto);
+    // Se guarda cuánto vencimiento se descontó de verdad (menos que el monto si el pago lo superó) para revertirlo exacto al deshacer.
+    listaPagosTarjeta.push({ id: 'pt_' + Date.now(), tarjetaId: t.id, tarjetaNombre: t.nombre, bancoId, bancoNombre: banco.nombre, monto, fecha, vencDescontado: vencPrevio - t.vencimiento });
 
     guardar();
     cfCerrarModalGasto();
@@ -6441,7 +6472,7 @@ function elimPagoTarjeta(id) {
     const banco = listaBancos.find(b => b.id === p.bancoId);
     const tarjeta = listaTarjetas.find(t => t.id === p.tarjetaId);
     if (banco) banco.saldo += p.monto;
-    if (tarjeta) { tarjeta.saldo += p.monto; tarjeta.vencimiento = (tarjeta.vencimiento||0) + p.monto; }
+    if (tarjeta) { tarjeta.saldo += p.monto; tarjeta.vencimiento = (tarjeta.vencimiento||0) + (p.vencDescontado !== undefined ? p.vencDescontado : p.monto); }   // pagos viejos (sin vencDescontado) se revierten como antes
     listaPagosTarjeta = listaPagosTarjeta.filter(x => x.id !== id);
     guardar(); render();
 }
@@ -6504,10 +6535,11 @@ function confirmarPagoTarjetaUSD(tarjetaId) {
     const cuenta = listaCuentasUSD.find(c => c.id === cuentaId);
     if (!cuenta) { alert('Cuenta USD no encontrada.'); return; }
 
+    const vencPrevio = t.vencimiento||0;
     cuenta.saldo -= monto;
     t.saldo -= monto;
-    t.vencimiento = Math.max(0, (t.vencimiento||0) - monto);
-    listaPagosTarjetaUSD.push({ id: 'ptu_' + Date.now(), tarjetaId: t.id, tarjetaNombre: t.nombre, cuentaId, cuentaNombre: cuenta.nombre, monto, fecha });
+    t.vencimiento = Math.max(0, vencPrevio - monto);
+    listaPagosTarjetaUSD.push({ id: 'ptu_' + Date.now(), tarjetaId: t.id, tarjetaNombre: t.nombre, cuentaId, cuentaNombre: cuenta.nombre, monto, fecha, vencDescontado: vencPrevio - t.vencimiento });
 
     guardar();
     cfCerrarModalGasto();
@@ -6521,7 +6553,7 @@ function elimPagoTarjetaUSD(id) {
     const cuenta = listaCuentasUSD.find(c => c.id === p.cuentaId);
     const tarjeta = listaTarjetasUSD.find(t => t.id === p.tarjetaId);
     if (cuenta) cuenta.saldo += p.monto;
-    if (tarjeta) { tarjeta.saldo += p.monto; tarjeta.vencimiento = (tarjeta.vencimiento||0) + p.monto; }
+    if (tarjeta) { tarjeta.saldo += p.monto; tarjeta.vencimiento = (tarjeta.vencimiento||0) + (p.vencDescontado !== undefined ? p.vencDescontado : p.monto); }   // pagos viejos (sin vencDescontado) se revierten como antes
     listaPagosTarjetaUSD = listaPagosTarjetaUSD.filter(x => x.id !== id);
     guardar(); renderDolares();
 }
@@ -6698,7 +6730,7 @@ function cfConfirmarGasto() {
     const monto   = parseFloat(document.getElementById('cf-gm-monto').value);
     const moneda  = document.getElementById('cf-gm-moneda').value;
     const detalle = document.getElementById('cf-gm-detalle').value.trim();
-    const fecha   = document.getElementById('cf-gm-fecha').value;
+    const fecha   = document.getElementById('cf-gm-fecha').value || cfFechaLocal();   // el gasto nace pagado: sin fecha se descontaría de nuevo al cargarla después
     const cuotas  = parseInt(document.getElementById('cf-gm-cuotas').value) || 1;
     const rubro   = document.getElementById('cf-gm-rubro').value;
     const medioId = document.getElementById('cf-gm-medio').value;
